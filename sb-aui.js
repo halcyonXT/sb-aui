@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.5
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
 // @match        https://starblast.io/
 // @icon         https://i.ibb.co/1QgnHfK/aui.png
+// @updateURL    https://greasyfork.org/en/scripts/472581-sb-aui/
 // @grant        none
 // ==/UserScript==
 
@@ -18,12 +19,14 @@
  * 1.2.1 - More optimizations and code cleanup. Added hardElementRefresh
  * 1.2.2 - Tested component relationships (they work), added loading animations and some debugging
  * 1.2.3 - GreasyFork is begging me to update the version number
+ * 1.2.4 - (Mateo) - Added user search
+ * 1.2.5 - XSS prevention (username sanitization) and user search results update
  */
 
 'use strict';
 
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const CURRENT_RUNNING_VERSION = "1.2.3"
+const CURRENT_RUNNING_VERSION = "1.2.5"
 
 /********* STYLING ************ */
 
@@ -261,6 +264,13 @@ window["COMPONENT_STATE_VALUES"] = {
             invasion: false
         }
     },
+    userSearch: {
+        active: false,
+        loading: false,
+        input: "",
+        results: {},
+        systemsQueried: 0,
+    },
     filteredSystems: [],
     statusReportActive: false,
     statusReportLoading: false,
@@ -351,6 +361,9 @@ let API_TIMER = setInterval(async () => {
     if (COMPONENT_STATE_VALUES.options.activePanel !== 'listing') {
         return;
     }
+    if (COMPONENT_STATE_VALUES.userSearch.input) {
+        return;
+    }
     let raw = await(await fetch(API_LINK)).json();
     COMPONENT_STATE_VALUES.listingLoading = false;
     let allSystems = [];
@@ -374,7 +387,15 @@ let API_TIMER = setInterval(async () => {
     }
     COMPONENT_STATE_VALUES.filteredSystems = allSystems.sort((a, b) => a.time - b.time);
     Listing.refreshElement();
+    returnCaret();
 }, 3200)
+
+const returnCaret = () => {
+        //The three lines below are necessary because of refresh resetting the caret on input
+    document.querySelector('#user-search').focus()
+    document.querySelector('#user-search').value = "";
+    document.querySelector('#user-search').value = COMPONENT_STATE_VALUES.userSearch.input
+}
 
 let STATUS_TIMER = null;
 window.statusReport = async (query) => {
@@ -449,6 +470,53 @@ window.closeStatusReport = () => {
     clearInterval(STATUS_TIMER);
     STATUS_TIMER = null;
     StatusReportModal.hardRefreshElement();
+}
+
+let USER_QUERY_TIMER = null
+window.handleSearch = () => {
+    COMPONENT_STATE_VALUES.userSearch.input = document.querySelector("#user-search").value;
+    clearTimeout(USER_QUERY_TIMER);
+    if (!COMPONENT_STATE_VALUES.userSearch.input) {
+        Listing.refreshElement();
+        return COMPONENT_STATE_VALUES.userSearch.loading = false;
+    }
+    if (!COMPONENT_STATE_VALUES.userSearch.loading) {
+        COMPONENT_STATE_VALUES.userSearch.loading = true;
+        Listing.refreshElement();
+        returnCaret();
+    }
+    USER_QUERY_TIMER = setTimeout(async () => {
+        //https://starblast.dankdmitron.dev/api/status/${query}`
+        COMPONENT_STATE_VALUES.userSearch.systemsQueried = 0;
+        let playersList = [], mostSimilar = [];
+        for (let system of COMPONENT_STATE_VALUES.filteredSystems) {
+            try {
+                let query = `${system.id}@${system.IP_ADDR}`
+                let raw = await (await fetch(`https://starblast.dankdmitron.dev/api/status/${query}`)).json()
+                for (let key of Object.keys(raw.players)) {
+                    let player = raw.players[key]
+                    playersList.push({name: player.player_name, query: query});
+                }
+                if (COMPONENT_STATE_VALUES.userSearch.systemsQueried < COMPONENT_STATE_VALUES.filteredSystems.length) {
+                    COMPONENT_STATE_VALUES.userSearch.systemsQueried++;
+                }
+            } catch (ex) {console.log(ex)}
+        }
+        for (let player of playersList) {
+            let similarity = calculateSimilarity(player.name).toFixed(2)
+            if (similarity > 25) {
+                mostSimilar.push({
+                    name: player.name,
+                    similarity: similarity,
+                    query: player.query
+                })
+            }
+        }
+        COMPONENT_STATE_VALUES.userSearch.results = mostSimilar.sort((a, b) => a.similarity - b.similarity).reverse();
+        COMPONENT_STATE_VALUES.userSearch.loading = false;
+        Listing.refreshElement();
+        returnCaret();
+    }, 300)
 }
 document.querySelector('#play').addEventListener('click', () => {
     clearInterval(API_TIMER);
@@ -585,7 +653,7 @@ let Settings = new Component("SLSettings", () => `<div id="SL_SETTINGS" style="b
 </div>`)
 
 let Listing = new Component("ServerListing", () => `
-    <div id="SL_LISTING" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${COMPONENT_STATE_VALUES.options.activePanel == "listing" ? "flex" : "none"}; flex-direction: column; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a">
+    <div id="SL_LISTING" style="box-sizing:border-box;overflow-x:hidden;padding:0.6vw;height:86%;width:100%;display: ${COMPONENT_STATE_VALUES.options.activePanel == "listing" ? "flex" : "none"}; flex-direction: column; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a">
         ${
             COMPONENT_STATE_VALUES.listingLoading
             ?
@@ -597,28 +665,87 @@ let Listing = new Component("ServerListing", () => `
                 ?
                 ""
                 :
-                COMPONENT_STATE_VALUES.filteredSystems.map(system => {
-                    return  `
-                            <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
-                                <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
-                                    ${system.name}
-                                </div>
-                                <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
-                                <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
-                                    <div>
-                                        ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
-                                    </div>   
-                                    <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
-                                        ${~~(system.time / 60)} min
-                                    </div> 
-                                    <div>
-                                        ${system.players} players
-                                    </div>
-                                </div>
+                `
+                <input id="user-search" autofocus value="${COMPONENT_STATE_VALUES.userSearch.input}" oninput="window.handleSearch()" placeholder="Search user in queried servers" style="width:100%; height:2.5vh; padding:0.3vh 0 0.3vh 0; font-family: 'Abel', sans-serif; color: white; border: 1px solid #1a1a1a; outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 1vh; text-indent: 0.5vw"></input>
+                ${
+                    COMPONENT_STATE_VALUES.userSearch.input
+                    ?
+                    `
+                        ${
+                            COMPONENT_STATE_VALUES.userSearch.loading
+                            ?
+                            `${LoadingAnimation.getElement()}`
+                            :
+                            `
+                            <div style="display:flex;height:2.2vh; padding:0.3vh 0 0.3vh 0;border-bottom: 1px solid #1a1a1a; font-family: 'Abel', sans-serif; color: #444444; outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; font-size: 1.4vh;  margin-bottom: 0.7vh;">
+                                <div style="width:33.3%">NAME</div>
+                                <div style="width:33.3%">SIMILARITY</div>
+                                <div style="width:33.3%">SERVER</div>
                             </div>
-                        `
-                    
-                }).join('')
+                            ${
+                                COMPONENT_STATE_VALUES.userSearch.results.length === 0
+                                ?
+                                `
+                                <div style="width:100%;display:flex;flex-direction:column;font-family: 'Abel',sans-serif;color:#444444;text-shadow: black 0px 0px 0px;">
+                                    <div style="font-size:4.2vh;margin-top:1vh;">(⌐■_■)</div>
+                                    <div style="font-size:1.9vh"><br>All clear!<br>"${COMPONENT_STATE_VALUES.userSearch.input}" yields no users with a similarity match over 25%<br>Try selecting more servers (e.g. modding, survival)</div>
+                                </div>
+                                `
+                                :
+                                `
+                                ${
+                                    COMPONENT_STATE_VALUES.userSearch.results.map((item, index) => {
+                                        return (
+                                            `
+                                            <div style="display:flex;height:2vh;font-weight:600;background: ${index+1 % 2 === 0 ? "transparent" : "rgb(0,0,0,0.15)"} ;padding:0.1vh 0 0.1vh 0; font-family: 'Abel', sans-serif; color: white;outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 0.7vh;">
+                                                <div style="width:33.3%;max-width:33.3%;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
+                                                <div style="width:33.3%;color: ${getColorFromValue(Number(item.similarity))}">${item.similarity}%</div>
+                                                <div style="width:33.3%;display:flex;justify-content:center">
+                                                    <svg onclick="window.statusReport('${item.query}')" xmlns="http://www.w3.org/2000/svg" style="height:100%;aspect-ratio: 1 / 1; fill: white; cursor: pointer;" viewBox="0 -960 960 960"><path d="M440-220q125 0 212.5-87.5T740-520q0-125-87.5-212.5T440-820q-125 0-212.5 87.5T140-520q0 125 87.5 212.5T440-220Zm0-300Zm0 160q-83 0-147.5-44.5T200-520q28-70 92.5-115T440-680q82 0 146.5 45T680-520q-29 71-93.5 115.5T440-360Zm0-60q55 0 101-26.5t72-73.5q-26-46-72-73t-101-27q-56 0-102 27t-72 73q26 47 72 73.5T440-420Zm0-50q20 0 35-14.5t15-35.5q0-20-15-35t-35-15q-21 0-35.5 15T390-520q0 21 14.5 35.5T440-470Zm0 310q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T80-520q0-74 28.5-139.5t77-114.5q48.5-49 114-77.5T440-880q74 0 139.5 28.5T694-774q49 49 77.5 114.5T800-520q0 67-22.5 126T715-287l164 165-42 42-165-165q-48 40-107 62.5T440-160Z"/></svg>
+                                                </div>
+                                            </div>
+    
+                                            `
+                                        )
+                                    }).join('')
+                                }
+                                <div style="width:100%;display:flex;flex-direction:column;font-family: 'Abel',sans-serif;color:#444444;text-shadow: black 0px 0px 0px;margin-top:1vh">
+                                    <div style="font-size:1.9vh;text-align:center">${COMPONENT_STATE_VALUES.userSearch.results.length} results<br>${COMPONENT_STATE_VALUES.userSearch.systemsQueried} / ${COMPONENT_STATE_VALUES.filteredSystems.length} systems queried</div>
+                                </div>
+                                `
+                            }
+                            `
+                        }
+                    `
+                    :
+                    `
+                    ${
+                        COMPONENT_STATE_VALUES.filteredSystems.map(system => {
+                            return  `
+                                    <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
+                                        <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
+                                            ${system.name}
+                                        </div>
+                                        <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
+                                        <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
+                                            <div>
+                                                ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
+                                            </div>   
+                                            <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
+                                                ${~~(system.time / 60)} min
+                                            </div> 
+                                            <div>
+                                                ${system.players} players
+                                            </div>
+                                        </div>
+                                    </div>
+                                `
+                            
+                        }).join('')
+                    }
+                    `
+                }
+                `
             }
             `
         }
@@ -696,7 +823,7 @@ let StatusReportModal = new Component("StatusReportModal", () => `
                                                     <div style="height:60%; aspect-ratio: 1 / 1; border-radius:9999px; background: ${player.ecp ? "#37dd37" : "#Ff3931"}"></div>
                                                 </div>
                                                 <div style="width:90%;height:100%;display:flex;justify-content:space-between;font-family:'Abel',sans-serif;font-size:0.8vw;color:white;">
-                                                    <div>${player.name}</div>
+                                                    <div>${sanitizeUsername(player.name)}</div>
                                                     <div style="display:flex">${player.score}&nbsp;<img style="height:0.8vw;aspect-ratio: 1 / 1;object-fit:contain;" src="${SHIP_LINKS.find(url => url.endsWith(`/${player.type}.png`))}"/></div>
                                                 </div>
                                             </div>
@@ -869,6 +996,65 @@ const calculatePlayerScore = (type, ecp) => {
         potentialScore: (7 / 15) + SHIP_TABLE[String(type)]["potential"][+!ecp], // +!ecp is: First ecp is converted into a boolean and then inverted using !, then turned into a number using +, resulting in index 0 for ecp=true
         energyOutput: SHIP_TABLE[String(type)]["eregen"]
     }
+}
+
+const calculateSimilarity = (query) => {
+    const referenceString = COMPONENT_STATE_VALUES.userSearch.input.toUpperCase();
+
+    const maxLength = Math.max(query.length, referenceString.length);
+    const distance = levenshteinDistance(query, referenceString);
+
+    const similarityPercentage = ((maxLength - distance) / maxLength) * 100;
+    return similarityPercentage;
+}
+
+const levenshteinDistance = (str1, str2) => {
+    const matrix = [];
+
+    for (let i = 0; i <= str1.length; i++) {
+        matrix[i] = [i];
+        for (let j = 1; j <= str2.length; j++) {
+            if (i === 0) {
+                matrix[i][j] = j;
+            } else {
+                const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j] + 1, // Deletion
+                    matrix[i][j - 1] + 1, // Insertion
+                    matrix[i - 1][j - 1] + cost // Substitution
+                );
+            }
+        }
+    }
+
+    return matrix[str1.length][str2.length];
+}
+
+const sanitizeUsername = (username) => {
+    const sanitizedUsername = username
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#x27;")
+        .replace(/\//g, "&#x2F;");
+    
+    return sanitizedUsername;
+}
+
+const lerpColor = (color1, color2, t) => {
+    const r = Math.round(color1.r * (1 - t) + color2.r * t);
+    const g = Math.round(color1.g * (1 - t) + color2.g * t);
+    const b = Math.round(color1.b * (1 - t) + color2.b * t);
+    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+}
+
+const getColorFromValue = (value) => {
+    const color1 = { r: 255, g: 57, b: 49 }; // #Ff3931
+    const color2 = { r: 55, g: 221, b: 55 }; // #37dd37
+    const t = value / 100; // Normalize the value
+    const interpolatedColor = lerpColor(color1, color2, t);
+    return interpolatedColor;
 }
 
 const SHIP_LINKS = [
