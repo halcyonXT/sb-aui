@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.2.1
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
@@ -10,12 +10,32 @@
 // @grant        none
 // ==/UserScript==
 
+/**
+ * CHANGELOG
+ * 1.0.0 - Initial creation. Core of AUI
+ * 1.1.0 - Added team evaluation (PBS, PPBS, DPS)
+ * 1.2.0 - Optimizations, code cleanup and transition to a component-based system
+ * 1.2.1 - More optimizations and code cleanup. Added hardElementRefresh
+ */
+
+'use strict';
+
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const ACCENT_COLOR = "#00b97d", BG_COLOR = "#1a1a1a";
+const CURRENT_RUNNING_VERSION = "1.2.1"
 
+/********* STYLING ************ */
 
-
-
+const applyCSS = (styles, element) => {
+    if (!element) {
+        return;
+    }
+    for (let key of Object.keys(styles)) {
+        try {
+            element.style[key] = styles[key]
+        } catch (ex) {console.error(`Object.prototype.applyStyles: Cannot apply style '${key}' to ${element}`)}
+    }
+    return;
+}
 
 const applyBaseStyles = (element, includeFont = true) => {
     element.style.boxShadow = "black 0px 0px 0px";
@@ -28,25 +48,34 @@ const applyBaseStyles = (element, includeFont = true) => {
     element.style.border = "1px solid #1a1a1a"
     element.style.color = "#FFF";
     element.style.borderRadius = "10px";
+    element.classList.add("hover-class");
 }
 
-const applyStyles = (styles, element) => {
-    if (!element) {
-        return;
+//Remove unneeded UI elements (spotify and socials columns)
+let removalQueries = ['[data-translate-base="music"]','[data-translate-base="community"]'];
+for (let query of removalQueries) {
+    for (let el of document.querySelectorAll(query)) {
+        el.style.display = "none"
     }
-    if (!styles) {
-        return;
-    }
-    for (let key of Object.keys(styles)) {
-        try {
-            element.style[key] = styles[key]
-        } catch (ex) {console.error(`applyStyles: Cannot apply style '${key}' to ${element}`)}
-    }
-    return;
 }
 
-'use strict';
+//Setting the AUI logo
+try {
+    document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
+} catch (ex) {
+    try {
+        setTimeout(() => {
+            document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
+        }, 500)
+    } catch (ex) {
+        setTimeout(() => {
+            document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
+        }, 1000)
+    }
+}
 
+
+//Importing DM Sans and Abel
 try {
     var styleElement = document.createElement('style');
     var importRule = `
@@ -63,54 +92,40 @@ try {
     });
 } catch (ex) {}
 
-try {
-    var style = document.createElement('style');
-    var fontFaceRule = `
-    @font-face {
-        font-family: 'Ships'; /* Name your font */
-        src: url('https://starblast.dankdmitron.dev/fonts/Starblast/starblast-vanilla-ships.ttf') format('truetype');
-    }
-    `;
-    style.textContent = fontFaceRule;
-    document.head.appendChild(style);
-} catch (ex) {}
-
+//All buttons get base styles
 for (let el of document.querySelectorAll('button')) {
     applyBaseStyles(el)
 }
 
+//Scrollbar code
 document.documentElement.style.scrollbarWidth = 'thin';
-
-  // Internet Explorer and Microsoft Edge (legacy)
-  document.documentElement.style.msOverflowStyle = 'none';
-
-  // For Microsoft Edge (Chromium-based) and modern browsers with standard scrollbar support
-  var style = document.createElement('style');
-  var css = `
-    /* Webkit and Blink */
-    ::-webkit-scrollbar {
-      width: 0.2em;
-    }
-    ::-webkit-scrollbar-thumb {
-      background-color: #1a1a1a;
-      border: none;
-      border-radius: 0.1em;
-    }
-    ::-webkit-scrollbar-track {
-      background-color: transparent;
-      border: none;
-    }
-    /* Firefox */
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-    `;
-  style.appendChild(document.createTextNode(css));
-  document.head.appendChild(style);
-
-//document.querySelector("body").style.backgroundImage = "url(https://www.wallpaperflare.com/static/760/797/225/galaxy-space-stars-universe-wallpaper.jpg)";
+document.documentElement.style.msOverflowStyle = 'none';
+var style = document.createElement('style');
+var css = `
+/* Webkit and Blink */
+::-webkit-scrollbar {
+    width: 0.2em;
+}
+::-webkit-scrollbar-thumb {
+    background-color: #1a1a1a;
+    border: none;
+    border-radius: 0.1em;
+}
+::-webkit-scrollbar-track {
+    background-color: transparent;
+    border: none;
+}
+/* Firefox */
+scrollbar-width: thin;
+scrollbar-color: transparent transparent;
+`;
+style.appendChild(document.createTextNode(css));
+document.head.appendChild(style);
 document.querySelector("body").style.backgroundColor = "#0b0b0b";
 
-let overlayStyles = {
+
+//Overlay styles
+applyCSS({
     backgroundColor: "#1a1a1a",
     background: "repeating-linear-gradient(45deg, #1a1a1a 0, #131313 1px, #0b0b0b 0, #0b0b0b 50%)",
     backgroundSize: "10px 10px",
@@ -121,73 +136,72 @@ let overlayStyles = {
     boxShadow: "black 0px 0px 0px",
     border: "6px solid #131313",
     outline: "54px solid #0b0b0b",
-};
-applyStyles(overlayStyles, document.querySelector("#overlay"));
+}, document.querySelector("#overlay"));
 
 
-try {
-    document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
-} catch (ex) {
-    try {
-        setTimeout(() => {
-            document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
-        }, 500)
-    } catch (ex) {
-        setTimeout(() => {
-            document.querySelector("#logo > img").src = "https://i.ibb.co/t25sFmR/SBAUI.png";
-        }, 1000)
-    }
-}
+//Body styles
 document.querySelector("body").style.height = "100dvh";
 document.querySelector("body").style.width = "100vw";
-document.querySelector("#play").style.fontFamily = `"DM Sans", sans-serif`;
-document.querySelector("#play").style.letterSpacing = "4px"
-document.querySelector("#play").style.fontSize = "2.2rem"
-document.querySelector("#play").style.fontWeight = "600";
-document.querySelector("#game_modes").style.background = `transparent`;
-document.querySelector("#game_modes").style.textShadow = `black 0px 0px 0px`;
-document.querySelector("#game_modes").style.fontFamily = `'Abel', sans-serif`;
-document.querySelector("#game_modes").style.fontSize = `1rem`;
-document.querySelector("#game_modes").style.letterSpacing = `0px`;
-document.querySelector("#game_modes").style.marginTop = `5px`;
-document.querySelector("#game_modes").style.marginLeft = `auto`;
-document.querySelector("#game_modes").style.marginRight = `auto`;
-document.querySelector("#game_modes").style.width = `80%`;
-document.querySelector("#game_modes").style.borderTop = `1px solid #1a1a1a`;
 
-document.querySelector("#game_modes").style.color = `gray`;
+//Play button styles
+applyCSS({
+    fontFamily: `"DM Sans", sans-serif`,
+    letterSpacing: "4px",
+    fontSize: "2.2rem",
+    fontWeight: "600"
+}, document.querySelector("#play"))
+
+//Styles
+applyCSS({
+    background: `transparent`,
+    textShadow: `black 0px 0px 0px`,
+    fontFamily: `'Abel', sans-serif`,
+    fontSize: `1rem`,
+    letterSpacing: `0px`,
+    marginTop: `5px`,
+    marginLeft: `auto`,
+    marginRight: `auto`,
+    width: `80%`,
+    borderTop: `1px solid #1a1a1a`,
+    color: `gray`
+},document.querySelector("#game_modes"))
+
+//Changelog styles
 document.querySelector(".changelog-new").style.fontFamily = `"DM Sans", sans-serif`;
 
-let removalQueries = ['[data-translate-base="music"]','[data-translate-base="community"]'];
-for (let query of removalQueries) {
-    for (let el of document.querySelectorAll(query)) {
-        el.style.display = "none"
-    }
-}
-//followtools bottom-left
+
+//Tools like "modding" styles (4 buttons)
 document.querySelector('.followtools').style.left = '0';
 document.querySelector('.followtools').style.width = 'max-content';
 document.querySelector('.followtools').style.zIndex = '500';
+
+//Changelog to top
 document.querySelector('.bottom-left').style.top = '0';
 document.querySelector('.bottom-left').style.height = 'max-content';
-document.querySelector('.inputwrapper').style.background = '#0b0b0b';
-document.querySelector('.inputwrapper').style.border = '1px solid #1a1a1a';
-document.querySelector('.inputwrapper').style.fontFamily = 'DM Sans';
-document.querySelector('.inputwrapper').style.boxShadow = 'black 0px 0px 0px';
-document.querySelector('.inputwrapper').style.borderRadius = '10px';
 
+//Name input styles
+applyCSS({
+    background: '#0b0b0b',
+    border: '1px solid #1a1a1a',
+    fontFamily: 'DM Sans',
+    boxShadow: 'black 0px 0px 0px',
+    borderRadius: '10px',
+},document.querySelector('.inputwrapper'))
 
+//Buttons for switching modes styles
 const leftRight = [document.querySelector('#prevMode'),document.querySelector('#nextMode')];
 for (let el of leftRight) {
     el.style.color = '#FFFFFF';
     el.style.textShadow = 'black 0px 0px 0px';
 }
 
+//Elements to apply baseStyles to
 const baseStyleQueries = ['.changelog-new', '#moddingspace', "#donate", "#rankings", "#training"];
 for (let query of baseStyleQueries) {
     applyBaseStyles(document.querySelector(query));
 }
 
+//Styles for button elements
 const ml = ['#moddingspace', "#donate", "#rankings", "#training"]
 for (let query of ml) {
     let item = document.querySelector(query);
@@ -211,16 +225,15 @@ for (let el of document.querySelectorAll('.modal')) {
 for (let el of document.querySelectorAll('.social i')) {
     applyBaseStyles(el, false);
 }
+/***********=/STYLING********** */
 
+//Create SL INTEGRATION
 var J = document.createElement("div");
-
 J.id = "SL_INTEGRATION";
-
 document.querySelector('#overlay').appendChild(J);
 
 const SL_INTEGRATION = document.querySelector('#SL_INTEGRATION');
-
-let styles = {
+applyCSS({
     position: 'absolute',
     height: '100%',
     width: '25%',
@@ -228,93 +241,125 @@ let styles = {
     right: '0',
     display: 'flex',
     flexDirection: 'column'
-}
+}, SL_INTEGRATION)
 
-for (let key of Object.keys(styles)) {
-    SL_INTEGRATION.style[key] = styles[key]
-}
+const templateStatusData = () => ({name: "",id: "",team_1: {hue: null,gems: 0,level: 0,potentialOutput: 0,PBS: 0,PPBS: 0,players: []},team_2: {hue: null,gems: 0,level: 0,potentialOutput: 0,PBS: 0,PPBS: 0,players: []},team_3: {hue: null,gems: 0,level: 0,potentialOutput: 0,PBS: 0,PPBS: 0,players: []}})
 
-
-let options = {
-    activePanel: "listing",
-    activeRegion: "europe",
-    modes: {
-        team: true,
-        survival: false,
-        deathmatch: false,
-        modded: false,
-        invasion: false
-    }
-};
-let filteredSystems = [];
-let statusReportActive = false;
-
-let statusReportData = {
-    name: "",
-    id: "",
-    team_1: {
-        hue: null,
-        gems: 0,
-        level: 0,
-        potentialOutput: 0,
-        PBS: 0,
-        PPBS: 0,
-        players: []
+//All variables used in the components should be declared here
+window["COMPONENT_STATE_VALUES"] = {
+    options: {
+        activePanel: "listing",
+        activeRegion: "europe",
+        modes: {
+            team: true,
+            survival: false,
+            deathmatch: false,
+            modding: false,
+            invasion: false
+        }
     },
-    team_2: {
-        hue: null,
-        gems: 0,
-        level: 0,
-        potentialOutput: 0,
-        PBS: 0,
-        PPBS: 0,
-        players: []
-    },
-    team_3: {
-        hue: null,
-        gems: 0,
-        level: 0,
-        potentialOutput: 0,
-        PBS: 0,
-        PPBS: 0,
-        players: []
+    filteredSystems: [],
+    statusReportActive: false,
+    statusReportData: {
+        name: "",
+        id: "",
+        team_1: {
+            hue: null,
+            gems: 0,
+            level: 0,
+            potentialOutput: 0,
+            PBS: 0,
+            PPBS: 0,
+            players: []
+        },
+        team_2: {
+            hue: null,
+            gems: 0,
+            level: 0,
+            potentialOutput: 0,
+            PBS: 0,
+            PPBS: 0,
+            players: []
+        },
+        team_3: {
+            hue: null,
+            gems: 0,
+            level: 0,
+            potentialOutput: 0,
+            PBS: 0,
+            PPBS: 0,
+            players: []
+        }
     }
-};
-
-const templateStatusData = () => ({name: "",team_1: {hue: null,players: []},team_2: {hue: null,players: []},team_3: {hue: null,players: []}})
-
-window.switchActivePanel = (panel) => {
-    options.activePanel = panel;
-    refreshSL();
 }
 
-window.switchActiveRegion = (region) => {
-    options.activeRegion = region;
-    refreshSL();
+
+//Component class for easier maintaining. NOTE: All components must have only 1 parent element and components should be named using PascalCase 
+class Component {
+    /**
+     * AUI HTML component. Make sure there is a wrapping parent element.
+     * @param {String} ID - ID of the element 
+     * @param {Function} HTML - Function that returns a template string representing innerHTML. Note that any conditions put on the wrapper element itself will never reflect upon using .refreshElement(), to reflect those changes use .hardRefreshElement()
+     */
+    constructor(ID, HTML) {
+        this.ID = ID
+        this.HTML = HTML
+    }
+
+    evaluate() {
+        if (typeof this.HTML === 'function') {
+            return this.HTML();
+        } else {throw new Error(`Component class error: Second argument in Component instantiation is not a function ('${typeof this.HTML}'). ${typeof this.HTML === 'string' && "Hint: Put '() =>' before your template literal"}`)}
+    }
+    
+    getElement() {
+        const tempContainer = document.createElement("span");
+        tempContainer.innerHTML = this.evaluate();
+        tempContainer.children[0].setAttribute("id", `${this.ID}`)
+        if (tempContainer.children.length > 1) {
+            throw new Error(`Component class error: Components must have a parent element (Component ID: ${this.ID})`)
+        }
+    
+        return tempContainer.innerHTML;
+    }
+
+    refreshElement() {
+        //console.log(`Component refreshed: ${this.ID}`)
+        try {
+            let tempElement = document.createElement("span");
+            tempElement.innerHTML = this.evaluate();
+            document.querySelector(`#${this.ID}`).innerHTML = tempElement.children[0].innerHTML;
+        } catch (ex) {console.error(`Couldn't refresh element with the ID of '${this.ID}': ` + ex)}
+    }
+
+    hardRefreshElement() {
+        try {
+            let tempElement = document.createElement("span");
+            tempElement.innerHTML = this.evaluate();
+            tempElement.children[0].setAttribute("id", `${this.ID}`);
+            document.querySelector(`#${this.ID}`).outerHTML = tempElement.innerHTML;
+        } catch (ex) {console.error(`Couldn't hardRefresh element with the ID of '${this.ID}': ` + ex)}
+    }
 }
 
-window.toggleMode = (mode) => {
-    options.modes[mode] = !options.modes[mode];
-    refreshSL();
-}
 
 let API_TIMER = setInterval(async () => {
-    if (options.activePanel !== 'listing') {
+    if (COMPONENT_STATE_VALUES.options.activePanel !== 'listing') {
         return;
     }
     let raw = await(await fetch(API_LINK)).json();
     let allSystems = [];
     for (let item of raw) {
-        if (item.hasOwnProperty("modding") && item.modding) {
-            if (!options.modes.modding) {
+        if (item.modding) {
+            if (!COMPONENT_STATE_VALUES.options.modes.modding) {
                 continue;
             } 
         }
-        if (item.location.toLowerCase() !== options.activeRegion) {
+        if (item.location.toLowerCase() !== COMPONENT_STATE_VALUES.options.activeRegion) {
             continue;
         }
         for (let system of item.systems) {
-            if (options.modes[system.mode]) {
+            if (COMPONENT_STATE_VALUES.options.modes[system.mode]) {
                 allSystems.push({
                     ...system,
                     IP_ADDR: item.address
@@ -322,312 +367,333 @@ let API_TIMER = setInterval(async () => {
             }
         }
     }
-    filteredSystems = allSystems.sort((a, b) => a.time - b.time);
-    refreshSL();
-    
-}, 3000)
-
-const capitalize = str => str.charAt(0).toUpperCase() + str.slice(1);
+    COMPONENT_STATE_VALUES.filteredSystems = allSystems.sort((a, b) => a.time - b.time);
+    Listing.refreshElement();
+}, 3200)
 
 let STATUS_TIMER = null;
-
 window.statusReport = async (query) => {
     if (STATUS_TIMER) {return};
+    COMPONENT_STATE_VALUES.statusReportActive = true;
+    StatusReportModal.hardRefreshElement();
     STATUS_TIMER = setInterval(async () => {
-        statusReportActive = true;
-        refreshSL();
         let raw = await (await fetch(`https://starblast.dankdmitron.dev/api/status/${query}`)).json();
-        statusReportData = templateStatusData();
-        statusReportData.name = raw.name;
-        statusReportData.id = query.split('@')[0];
+        COMPONENT_STATE_VALUES.statusReportData = templateStatusData();
+        COMPONENT_STATE_VALUES.statusReportData.name = raw.name;
+        COMPONENT_STATE_VALUES.statusReportData.id = query.split('@')[0];
         for (let key of Object.keys(raw.players)) {
             let player = raw.players[key];
-            statusReportData[`team_${player.friendly + 1}`].players.push({
+            COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].players.push({
                 name: player.player_name,
                 ecp: !!player.custom,
                 score: player.score,
                 type: player.type,
                 PBS: calculatePlayerScore(player.type, !!player.custom)
             })
-            statusReportData[`team_${player.friendly + 1}`].hue = player.hue;
+            COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].hue = player.hue;
         }
         for (let team of raw.mode.teams) {
             for (let num of ["team_1", "team_2", "team_3"]) {
-                if (team.hue === statusReportData[num].hue) {
-                    statusReportData[num].gems = team.crystals
-                    statusReportData[num].level = team.level
+                if (team.hue === COMPONENT_STATE_VALUES.statusReportData[num].hue) {
+                    COMPONENT_STATE_VALUES.statusReportData[num].gems = team.crystals
+                    COMPONENT_STATE_VALUES.statusReportData[num].level = team.level
                     break
                 }
             }
         }
         for (let team of ["team_1", "team_2", "team_3"]) {
             let sPBS = 0, sPPBS = 0, potentialOutput = 0;
-            for (let i = 0; i < statusReportData[team].players.length; i++) {
-                sPBS += Number(statusReportData[team].players[i].PBS.currentScore);
-                sPPBS += Number(statusReportData[team].players[i].PBS.potentialScore);
-                potentialOutput += statusReportData[team].players[i].PBS.energyOutput;
+            for (let i = 0; i < COMPONENT_STATE_VALUES.statusReportData[team].players.length; i++) {
+                sPBS += Number(COMPONENT_STATE_VALUES.statusReportData[team].players[i].PBS.currentScore);
+                sPPBS += Number(COMPONENT_STATE_VALUES.statusReportData[team].players[i].PBS.potentialScore);
+                potentialOutput += COMPONENT_STATE_VALUES.statusReportData[team].players[i].PBS.energyOutput;
             }
-            statusReportData[team].PBS = sPBS.toFixed(2);
-            statusReportData[team].PPBS = sPPBS.toFixed(2);
-            statusReportData[team].potentialOutput = potentialOutput;
+            COMPONENT_STATE_VALUES.statusReportData[team].PBS = sPBS.toFixed(2);
+            COMPONENT_STATE_VALUES.statusReportData[team].PPBS = sPPBS.toFixed(2);
+            COMPONENT_STATE_VALUES.statusReportData[team].potentialOutput = potentialOutput;
+            COMPONENT_STATE_VALUES.statusReportData[team].players = COMPONENT_STATE_VALUES.statusReportData[team].players.sort((a, b) => a.score - b.score).reverse();
         }
-        statusReportData.team_1.players = statusReportData.team_1.players.sort((a, b) => a.score - b.score).reverse();
-        statusReportData.team_2.players = statusReportData.team_2.players.sort((a, b) => a.score - b.score).reverse();
-        statusReportData.team_3.players = statusReportData.team_3.players.sort((a, b) => a.score - b.score).reverse();
-    }, 2000)
+        StatusReportModal.refreshElement();
+    }, 2500)
 }
 
+//These functions are attached to the window so listeners have access to them (Tampermonkey quirk)
+window.switchActivePanel = (panel) => {
+    COMPONENT_STATE_VALUES.options.activePanel = panel;
+    ListingOrSettings.refreshElement();
+    Settings.hardRefreshElement();
+    Listing.hardRefreshElement();
+}
+window.switchActiveRegion = (region) => {
+    COMPONENT_STATE_VALUES.options.activeRegion = region;
+    Settings.refreshElement();
+}
+window.toggleMode = (mode) => {
+    COMPONENT_STATE_VALUES.options.modes[mode] = !COMPONENT_STATE_VALUES.options.modes[mode];
+    console.log(COMPONENT_STATE_VALUES.options)
+    Settings.refreshElement();
+}
 window.closeStatusReport = () => {
-    statusReportActive = false;
+    COMPONENT_STATE_VALUES.statusReportActive = false;
     clearInterval(STATUS_TIMER);
     STATUS_TIMER = null;
-    refreshSL();
+    StatusReportModal.hardRefreshElement();
 }
-
 document.querySelector('#play').addEventListener('click', () => {
     clearInterval(API_TIMER);
     clearInterval(STATUS_TIMER);
     SL_INTEGRATION.style.display = 'none';
 });
 
+//WARNING: refreshSL is a SLOW function. Use it only when absolutely neccessary.
 const refreshSL = () => {
     SL_INTEGRATION.innerHTML = `
-        ${
-            !statusReportActive
-            ?
-            ""
-            :
-            `
-                <div id="MODAL_WRAPPER" style="position:fixed; top:0; left:0; width: 100%; height: 100%; display: grid; place-items:center; z-index: 999; background: rgba(0,0,0,0.4)">
-                    <div style="padding:1vw;display:flex;flex-direction:column;align-items:center;background:#0b0b0b;border:1px solid #1a1a1a;border-radius:12px">
-                        <div style="height:3vh; border-bottom: 1px solid #1a1a1a; width:50vw; color: white; font-family: 'DM Sans',sans-serif; font-size: 1.7vw; display: flex; justify-content: space-between; fill: white; align-items: center; padding-bottom: 2vh">
-                            <div>${statusReportData.name}</div>
-                            <div style="display:flex;gap:1vw;align-items:center;">
-                                <a target="_blank" href="https://starblast.io/#${statusReportData.id}">
-                                    <div style="height:1.4vw;display:grid;place-items:center;font-weight:400;font-size:1vw;border:1px solid white;border-radius:0.2vw;padding:0.4vw 1vw 0.4vw 1vw;color:white;">
-                                        JOIN
-                                    </div>
-                                </a>
-                                <svg onclick="window.closeStatusReport()" style="cursor: pointer;" xmlns="http://www.w3.org/2000/svg" height="2.5vh" viewBox="0 -960 960 960"><path d="m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z"/></svg>
-                            </div>
-                        </div>
-                        <div style="display:flex;height:55vh;width: 100%; margin-top: 2vh;justify-content:space-between;">
-                            ${
-                                (() => {
-                                    let arr = [];
-                                    for (let CUR_TEAM of ["team_1", "team_2", "team_3"]) {
-                                        arr.push(`
-                                        <div style="width:30%;height:100%;overflow-y: auto; display: flex; flex-direction: column; justify-content: flex-start; align-items: center">
-                                            <div style="margin-bottom: 1vh;border-radius: 0.25vw;border:1px solid hsla(${statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); background-color: hsla(${statusReportData[CUR_TEAM].hue}, 100%, 50%, 0.25); color: hsla(${statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); width:80%;padding: 1vh 0 1vh 0; font-family: 'DM Sans',sans-serif; font-weight: 600; text-align: center;">
-                                                ${hueToColorName(statusReportData[CUR_TEAM].hue)}
-                                            </div>
-                                            <div style="width:100%;margin: 1vh 0 1vh 0; padding-bottom:1vh;border-bottom: 1px solid #1a1a1a;">
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
-                                                    <div style="color:gray">Player count</div>
-                                                    <div style="color:white">${statusReportData[CUR_TEAM].players.length}</div>
-                                                </div>
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
-                                                    <div style="color:gray">Gems</div>
-                                                    <div style="color:white">${statusReportData[CUR_TEAM].gems}</div>
-                                                </div>
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
-                                                    <div style="color:gray">Level</div>
-                                                    <div style="color:white">${statusReportData[CUR_TEAM].level}</div>
-                                                </div>
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
-                                                    <div style="color:gray">Playerbase strength score</div>
-                                                    <div style="color:#A4D8D8;font-weight:bold;">${statusReportData[CUR_TEAM].PBS}</div>
-                                                </div>
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
-                                                    <div style="color:gray">Potential playerbase strength score</div>
-                                                    <div style="color:#F49AC2;font-weight:bold;">${statusReportData[CUR_TEAM].PPBS}</div>
-                                                </div>
-                                                <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
-                                                    <div style="color:gray">Maximum damage output (DPS)</div>
-                                                    <div style="color:#FDFD96;font-weight:bold;">${statusReportData[CUR_TEAM].potentialOutput}</div>
-                                                </div>
-                                            </div>
-                                            <div style="height:max-content;width:100%;display:flex;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;padding-bottom:0.5vh;border-bottom:1px solid #1a1a1a;margin-bottom: 0.5vh">
-                                                <div>ECP | NAME</div>
-                                                <div>SCORE | SHIP</div>
-                                            </div>
-                                            ${
-                                                statusReportData[CUR_TEAM].players.length === 0
-                                                ?
-                                                ""
-                                                :
-                                                statusReportData[CUR_TEAM].players.map(player => {
-                                                    return `
-                                                        <div style="height:max-content;margin-bottom:0.3vh;display:flex;width:100%;height:1vw">
-                                                            <div style="width:10%;height:100%;display:grid;place-items:center;">
-                                                                <div style="height:60%; aspect-ratio: 1 / 1; border-radius:9999px; background: ${player.ecp ? "#37dd37" : "#Ff3931"}"></div>
-                                                            </div>
-                                                            <div style="width:90%;height:100%;display:flex;justify-content:space-between;font-family:'Abel',sans-serif;font-size:0.8vw;color:white;">
-                                                                <div>${player.name}</div>
-                                                                <div style="display:flex">${player.score}&nbsp;<img style="height:0.8vw;aspect-ratio: 1 / 1;object-fit:contain;" src="${SHIP_LINKS.find(url => url.endsWith(`/${player.type}.png`))}"/></div>
-                                                            </div>
-                                                        </div>
-                                                    `
-                                                }).join('')
-                                            }
-                                    </div>
-                                    ${CUR_TEAM !== "team_3" ? `<div style="height:100%;width:1px;background-color:#1a1a1a"></div>` : ""}`)
-                                    }
-                                    return arr.join('')
-                                })()
-                            }
-                        </div>
-                    </div>
-                </div>
-            `
-        }
-        <div id="SL_TITLE" style="height:10%;width:100%;">
-            <div style="font-family: 'DM Sans', sans-serif;font-weight: 600;font-size: 1.3vw;text-align:right;width:100%;color:white">
-                Starblast AUI v1.1.0
-            </div>
-            <div style="font-family:'Abel', sans-serif; font-weight: 300; font-size: 0.9vw; text-align: right; width: 100%; color: gray;">
-                API (<a style="color:rgb(191,191,191)" href="https://starblast.dankdmitron.dev/" target="_blank"><u>Serverlist+</u></a>): <span style="color: white; font-weight: bold">dankdmitron</span>
-            </div>
-            <div style="font-family:'Abel', sans-serif; font-weight: 300; font-size: 0.9vw; text-align: right; width: 100%; color: gray;">
-                Design and integration: <span style="color: white; font-weight: bold">Halcyon</span>
-            </div>
-        </div>
-        <div id="SL_OPTIONS_WRAPPER" style="height:4%; width:100%;display: flex;">
-            <div id="SL_LISTING_REF" onclick="window.switchActivePanel('listing')"
-                style="${options.activePanel == 'listing' ? "background-color: #FFFFFF; color: #0b0b0b; fill: #0b0b0b;" : "background-color: #1a1a1a; color: #FFFFFF; fill: #FFFFFF;"}border-top-left-radius: 0.25vw; border-top-right-radius: 0.25vw;display: grid; place-items: center; font-size: 0.8vw; font-family: 'DM Sans',sans-serif;width:50%;font-weight: 500;cursor:pointer;">
-                LISTING
-            </div>
-            <div id="SL_SETTINGS_REF" onclick="window.switchActivePanel('settings')"
-                style="${options.activePanel == 'settings' ? "background-color: #FFFFFF; color: #0b0b0b; fill: #0b0b0b;" : "background-color: #1a1a1a; color: #FFFFFF; fill: #FFFFFF;"}border-top-left-radius: 0.25vw; border-top-right-radius: 0.25vw;display: grid; place-items: center; font-size: 0.8vw; font-family: 'DM Sans',sans-serif;width:50%;font-weight: 500;cursor:pointer;">
-                SETTINGS
-            </div>
-        </div>
-        <div id="SL_LISTING" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${options.activePanel == "listing" ? "flex" : "none"}; flex-direction: column; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a">
-            ${
-                filteredSystems.length === 0
-                ?
-                ""
-                :
-                filteredSystems.map(system => {
-                    return  `
-                            <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
-                                <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
-                                    ${system.name}
-                                </div>
-                                <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
-                                <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
-                                    <div>
-                                        ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
-                                    </div>   
-                                    <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
-                                        ${~~(system.time / 60)} min
-                                    </div> 
-                                    <div>
-                                        ${system.players} players
-                                    </div>
-                                </div>
-                            </div>
-                        `
-                    
-                }).join('')
-            }
-        </div>
-        <div id="SL_SETTINGS" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${options.activePanel == "settings" ? "flex" : "none"}; flex-direction: column; gap: 0.2rem; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a;justify-content: flex-start;align-items:flex-end;">
-            <div style="text-align:right;color:white;">
-                <div style="font-family:'DM Sans',sans-serif;font-size:1.5vw;margin-bottom:0.5vh;">
-                    REGION:
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Europe</div>
-                    ${
-                        options.activeRegion == "europe"
-                        ?
-                        `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                        :
-                        `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('europe')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>America</div>
-                    ${
-                        options.activeRegion == "america"
-                        ?
-                        `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                        :
-                        `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('america')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Asia</div>
-                    ${
-                        options.activeRegion == "asia"
-                        ?
-                        `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                        :
-                        `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('asia')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
-                    }
-                </div>
-            </div>
-            <div style="text-align:right;color:white;">
-                <div style="font-family:'DM Sans',sans-serif;font-size:1.5vw;margin-bottom:0.5vh;margin-top:2vh;">
-                    MODE:
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Team Mode</div>
-                    ${
-                        options.modes.team
-                        ?
-                        `<svg onclick="window.toggleMode('team')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
-                        :
-                        `<svg onclick="window.toggleMode('team')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Survival</div>
-                    ${
-                        options.modes.survival
-                        ?
-                        `<svg onclick="window.toggleMode('survival')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
-                        :
-                        `<svg onclick="window.toggleMode('survival')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Deathmatch</div>
-                    ${
-                        options.modes.deathmatch
-                        ?
-                        `<svg onclick="window.toggleMode('deathmatch')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
-                        :
-                        `<svg onclick="window.toggleMode('deathmatch')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Modded</div>
-                    ${
-                        options.modes.modded
-                        ?
-                        `<svg onclick="window.toggleMode('modded')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
-                        :
-                        `<svg onclick="window.toggleMode('modded')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
-                    }
-                </div>
-                <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
-                    <div>Invasion</div>
-                    ${
-                        options.modes.invasion
-                        ?
-                        `<svg onclick="window.toggleMode('invasion')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
-                        :
-                        `<svg onclick="window.toggleMode('invasion')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
-                    }
-                </div>
-            </div>
-        </div>
+        ${StatusReportModal.getElement()}
+        ${TitleAndCredits.getElement()}
+        ${ListingOrSettings.getElement()}
+        ${Listing.getElement()}
+        ${Settings.getElement()}
     `
 }
 
-function hueToColorName(hue) {
+//COMPONENTS GO BELOW
+let ListingOrSettings = new Component("SL_OPTIONS_WRAPPER", () => `<div id="SL_OPTIONS_WRAPPER" style="height:4%; width:100%;display: flex;">
+<div id="SL_LISTING_REF" onclick="window.switchActivePanel('listing')"
+    style="${COMPONENT_STATE_VALUES.options.activePanel == 'listing' ? "background-color: #FFFFFF; color: #0b0b0b; fill: #0b0b0b;" : "background-color: #1a1a1a; color: #FFFFFF; fill: #FFFFFF;"}border-top-left-radius: 0.25vw; border-top-right-radius: 0.25vw;display: grid; place-items: center; font-size: 0.8vw; font-family: 'DM Sans',sans-serif;width:50%;font-weight: 500;cursor:pointer;">
+    LISTING
+</div>
+<div id="SL_SETTINGS_REF" onclick="window.switchActivePanel('settings')"
+    style="${COMPONENT_STATE_VALUES.options.activePanel == 'settings' ? "background-color: #FFFFFF; color: #0b0b0b; fill: #0b0b0b;" : "background-color: #1a1a1a; color: #FFFFFF; fill: #FFFFFF;"}border-top-left-radius: 0.25vw; border-top-right-radius: 0.25vw;display: grid; place-items: center; font-size: 0.8vw; font-family: 'DM Sans',sans-serif;width:50%;font-weight: 500;cursor:pointer;">
+    SETTINGS
+</div>
+</div>`)
+
+let TitleAndCredits = new Component("TitleAndCredits", () => `<div style="height:10%;width:100%;">
+    <div style="font-family: 'DM Sans', sans-serif;font-weight: 600;font-size: 1.3vw;text-align:right;width:100%;color:white">
+        Starblast AUI v${CURRENT_RUNNING_VERSION}
+    </div>
+    <div style="font-family:'Abel', sans-serif; font-weight: 300; font-size: 0.9vw; text-align: right; width: 100%; color: gray;">
+        API (<a style="color:rgb(191,191,191)" href="https://starblast.dankdmitron.dev/" target="_blank"><u>Serverlist+</u></a>): <span style="color: white; font-weight: bold">dankdmitron</span>
+    </div>
+    <div style="font-family:'Abel', sans-serif; font-weight: 300; font-size: 0.9vw; text-align: right; width: 100%; color: gray;">
+        Design and integration: <span style="color: white; font-weight: bold">Halcyon</span>
+    </div>
+</div>`)
+
+let Settings = new Component("SLSettings", () => `<div id="SL_SETTINGS" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${COMPONENT_STATE_VALUES.options.activePanel == "settings" ? "flex" : "none"}; flex-direction: column; gap: 0.2rem; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a;justify-content: flex-start;align-items:flex-end;">
+<div style="text-align:right;color:white;">
+    <div style="font-family:'DM Sans',sans-serif;font-size:1.5vw;margin-bottom:0.5vh;">
+        REGION:
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Europe</div>
+        ${
+            COMPONENT_STATE_VALUES.options.activeRegion == "europe"
+            ?
+            `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+            :
+            `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('europe')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>America</div>
+        ${
+            COMPONENT_STATE_VALUES.options.activeRegion == "america"
+            ?
+            `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+            :
+            `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('america')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Asia</div>
+        ${
+            COMPONENT_STATE_VALUES.options.activeRegion == "asia"
+            ?
+            `<svg xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M480-294q78 0 132-54t54-132q0-78-54-132t-132-54q-78 0-132 54t-54 132q0 78 54 132t132 54Zm0 214q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+            :
+            `<svg xmlns="http://www.w3.org/2000/svg" onclick="window.switchActiveRegion('asia')" height="1vw" viewBox="0 -960 960 960"><path d="M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Zm0-340Z"/></svg>`
+        }
+    </div>
+</div>
+<div style="text-align:right;color:white;">
+    <div style="font-family:'DM Sans',sans-serif;font-size:1.5vw;margin-bottom:0.5vh;margin-top:2vh;">
+        MODE:
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Team Mode</div>
+        ${
+            COMPONENT_STATE_VALUES.options.modes.team
+            ?
+            `<svg onclick="window.toggleMode('team')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
+            :
+            `<svg onclick="window.toggleMode('team')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Survival</div>
+        ${
+            COMPONENT_STATE_VALUES.options.modes.survival
+            ?
+            `<svg onclick="window.toggleMode('survival')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
+            :
+            `<svg onclick="window.toggleMode('survival')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Deathmatch</div>
+        ${
+            COMPONENT_STATE_VALUES.options.modes.deathmatch
+            ?
+            `<svg onclick="window.toggleMode('deathmatch')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
+            :
+            `<svg onclick="window.toggleMode('deathmatch')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Modded</div>
+        ${
+            COMPONENT_STATE_VALUES.options.modes.modding
+            ?
+            `<svg onclick="window.toggleMode('modding')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
+            :
+            `<svg onclick="window.toggleMode('modding')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
+        }
+    </div>
+    <div style="color:gray;font-family: 'Abel',sans-serif;font-size:1vw;display:flex;gap:0.5vw;justify-content:end;align-items:center;fill:#FFFFFF;">
+        <div>Invasion</div>
+        ${
+            COMPONENT_STATE_VALUES.options.modes.invasion
+            ?
+            `<svg onclick="window.toggleMode('invasion')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z"/></svg>`
+            :
+            `<svg onclick="window.toggleMode('invasion')" xmlns="http://www.w3.org/2000/svg" height="1vw" viewBox="0 -960 960 960"><path d="M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Z"/></svg>`
+        }
+    </div>
+</div>
+</div>`)
+
+let Listing = new Component("ServerListing", () => `
+    <div id="SL_LISTING" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${COMPONENT_STATE_VALUES.options.activePanel == "listing" ? "flex" : "none"}; flex-direction: column; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a">
+        ${
+            COMPONENT_STATE_VALUES.filteredSystems.length === 0
+            ?
+            ""
+            :
+            COMPONENT_STATE_VALUES.filteredSystems.map(system => {
+                return  `
+                        <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
+                            <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
+                                ${system.name}
+                            </div>
+                            <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
+                            <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
+                                <div>
+                                    ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
+                                </div>   
+                                <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
+                                    ${~~(system.time / 60)} min
+                                </div> 
+                                <div>
+                                    ${system.players} players
+                                </div>
+                            </div>
+                        </div>
+                    `
+                
+            }).join('')
+        }
+</div>`)
+
+let StatusReportModal = new Component("StatusReportModal", () => `
+<div style="position:fixed; top:0; left:0; width: 100%; height: 100%; display: ${COMPONENT_STATE_VALUES.statusReportActive ? "grid" : "none"}; place-items:center; z-index: 999; background: rgba(0,0,0,0.4)">
+        <div style="padding:1vw;display:flex;flex-direction:column;align-items:center;background:#0b0b0b;border:1px solid #1a1a1a;border-radius:12px">
+            <div style="height:3vh; border-bottom: 1px solid #1a1a1a; width:50vw; color: white; font-family: 'DM Sans',sans-serif; font-size: 1.7vw; display: flex; justify-content: space-between; fill: white; align-items: center; padding-bottom: 2vh">
+                <div>${COMPONENT_STATE_VALUES.statusReportData.name}</div>
+                <div style="display:flex;gap:1vw;align-items:center;">
+                    <a target="_blank" href="https://starblast.io/#${COMPONENT_STATE_VALUES.statusReportData.id}">
+                        <div style="height:1.4vw;display:grid;place-items:center;font-weight:400;font-size:1vw;border:1px solid white;border-radius:0.2vw;padding:0.4vw 1vw 0.4vw 1vw;color:white;">
+                            JOIN
+                        </div>
+                    </a>
+                    <svg onclick="window.closeStatusReport()" style="cursor: pointer;" xmlns="http://www.w3.org/2000/svg" height="2.5vh" viewBox="0 -960 960 960"><path d="m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z"/></svg>
+                </div>
+            </div>
+            <div style="display:flex;height:55vh;width: 100%; margin-top: 2vh;justify-content:space-between;">
+                ${
+                    (() => {
+                        let arr = [];
+                        for (let CUR_TEAM of ["team_1", "team_2", "team_3"]) {
+                            arr.push(`
+                            <div style="width:30%;height:100%;overflow-y: auto; display: flex; flex-direction: column; justify-content: flex-start; align-items: center">
+                                <div style="margin-bottom: 1vh;border-radius: 0.25vw;font-size:1.9vw;border:1px solid hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); background-color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 0.25); color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); width:80%;padding: 1vh 0 1vh 0; font-family: 'DM Sans',sans-serif; font-weight: 600; text-align: center;">
+                                    ${hueToColorName(COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue)}
+                                </div>
+                                <div style="width:100%;margin: 1vh 0 1vh 0; padding-bottom:1vh;border-bottom: 1px solid #1a1a1a;">
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
+                                        <div style="color:gray">Player count</div>
+                                        <div style="color:white">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].players.length}</div>
+                                    </div>
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
+                                        <div style="color:gray">Gems</div>
+                                        <div style="color:white">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].gems}</div>
+                                    </div>
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between">
+                                        <div style="color:gray">Level</div>
+                                        <div style="color:white">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].level}</div>
+                                    </div>
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
+                                        <div style="color:gray">Playerbase strength score</div>
+                                        <div style="color:#A4D8D8;font-weight:bold;">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].PBS}</div>
+                                    </div>
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
+                                        <div style="color:gray">Potential playerbase strength score</div>
+                                        <div style="color:#F49AC2;font-weight:bold;">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].PPBS}</div>
+                                    </div>
+                                    <div style="font-family:'Abel',sans-serif;font-size:0.8vw;display:flex;width:100%;justify-content:space-between;font-weight:500;">
+                                        <div style="color:gray">Maximum damage output (DPS)</div>
+                                        <div style="color:#FDFD96;font-weight:bold;">${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].potentialOutput}</div>
+                                    </div>
+                                </div>
+                                <div style="height:max-content;width:100%;display:flex;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;padding-bottom:0.5vh;border-bottom:1px solid #1a1a1a;margin-bottom: 0.5vh">
+                                    <div>ECP | NAME</div>
+                                    <div>SCORE | SHIP</div>
+                                </div>
+                                ${
+                                    COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].players.length === 0
+                                    ?
+                                    ""
+                                    :
+                                    COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].players.map(player => {
+                                        return `
+                                            <div style="height:max-content;margin-bottom:0.3vh;display:flex;width:100%;height:1vw">
+                                                <div style="width:10%;height:100%;display:grid;place-items:center;">
+                                                    <div style="height:60%; aspect-ratio: 1 / 1; border-radius:9999px; background: ${player.ecp ? "#37dd37" : "#Ff3931"}"></div>
+                                                </div>
+                                                <div style="width:90%;height:100%;display:flex;justify-content:space-between;font-family:'Abel',sans-serif;font-size:0.8vw;color:white;">
+                                                    <div>${player.name}</div>
+                                                    <div style="display:flex">${player.score}&nbsp;<img style="height:0.8vw;aspect-ratio: 1 / 1;object-fit:contain;" src="${SHIP_LINKS.find(url => url.endsWith(`/${player.type}.png`))}"/></div>
+                                                </div>
+                                            </div>
+                                        `
+                                    }).join('')
+                                }
+                        </div>
+                        ${CUR_TEAM !== "team_3" ? `<div style="height:100%;width:1px;background-color:#1a1a1a"></div>` : ""}`)
+                        }
+                        return arr.join('')
+                    })()
+                }
+            </div>
+        </div>
+</div>`)
+
+
+
+//FUNCTIONS NOT RELEVANT TO MANIPULATING THE DOM GO BELOW
+const capitalize = str => str.charAt(0).toUpperCase() + str.slice(1);
+
+const hueToColorName = (hue) => {
     const colorMap = [
       { hueRange: [0, 15], colorName: 'Red' },
       { hueRange: [15, 45], colorName: 'Orange' },
@@ -638,325 +704,77 @@ function hueToColorName(hue) {
       { hueRange: [285, 330], colorName: 'Magenta' },
       { hueRange: [330, 360], colorName: 'Red' }
     ];
-  
     const matchedColor = colorMap.find(entry => hue >= entry.hueRange[0] && hue < entry.hueRange[1]);
-  
     return matchedColor ? matchedColor.colorName : 'Undefined';
 }
 
+
+
+const POTENTIAL = {
+    //          ECP    NON-ECP
+    odyssey:   [2.5,   1.5],
+    x3:        [1.7,   1  ],
+    bastion:   [1.4,   0.4],
+    aries:     [1  ,   0.3],
+    barracuda: [1.75,  0.3],
+}
+const buildItem = (ecp, nonecp, eregen, potential) => ({ecp, nonecp, eregen, potential});
+const SHIP_TABLE = {
+    // The numbers on this table need massive improvement
+    /**
+     * ECP - Points when player is ecp
+     * NONECP - Obvious
+     * POTENTIAL - Highest points the player can achieve with current path (e.g 2.5 for an ecp playing furystar)
+     * EREGEN - Obvious
+    */
+    //               ECP   NON-ECP    E-REGEN    POTENTIAL
+    // Tier 7
+    "701": buildItem(2.5 , 1.5,       150,       POTENTIAL.odyssey),
+    "702": buildItem(1.7 , 1  ,       50 ,       POTENTIAL.x3),
+    "703": buildItem(1.4 , 0.4,       100,       POTENTIAL.bastion),
+    "704": buildItem(1   , 0.3,       175,       POTENTIAL.aries),
+    // Tier 6
+    "601": buildItem(1.2 , 0.5,       60 ,       POTENTIAL.odyssey),
+    "602": buildItem(1.2 , 0.45,      50 ,       POTENTIAL.odyssey),
+    "603": buildItem(0.9 , 0.25,      40 ,       POTENTIAL.x3),
+    "604": buildItem(0.5 , 0.25,      48 ,       POTENTIAL.x3),
+    "605": buildItem(0.9 , 0.25,      45 ,       POTENTIAL.x3),
+    "606": buildItem(0.9 , 0.2 ,      45 ,       POTENTIAL.x3),
+    "607": buildItem(1.75, 0.3 ,      0  ,       POTENTIAL.barracuda),
+    "608": buildItem(0.5 , 0.2 ,      40 ,       POTENTIAL.bastion),
+    // Tier 5
+    "501": buildItem(1.05, 0.45,      60 ,       POTENTIAL.odyssey),
+    "502": buildItem(0.75, 0.3,       40 ,       POTENTIAL.odyssey),
+    "503": buildItem(0.2 , 0.1,       50 ,       POTENTIAL.x3),
+    "504": buildItem(0.3 , 0.15,      45 ,       POTENTIAL.x3),
+    "505": buildItem(0.1 , 0.05,      29 ,       POTENTIAL.x3),
+    "506": buildItem(0.9 , 0.5,       50 ,       POTENTIAL.barracuda),
+    "507": buildItem(0.15, 0.1,       35 ,       POTENTIAL.barracuda),
+    // Tier 4
+    "401": buildItem(0.3 , 0.05 ,     35  ,      POTENTIAL.odyssey),
+    "402": buildItem(0.55, 0.25 ,     50  ,      POTENTIAL.odyssey),
+    "403": buildItem(0.4 , 0.2  ,     55  ,      POTENTIAL.x3),
+    "404": buildItem(0.3 , 0.15 ,     40  ,      POTENTIAL.x3),
+    "405": buildItem(0.3 , 0.1  ,     30  ,      POTENTIAL.x3),
+    "406": buildItem(0.05, 0    ,     25  ,      POTENTIAL.barracuda),
+    // Tier 3
+    "301": buildItem(0.2 , 0.07 ,     30  ,      POTENTIAL.odyssey),
+    "302": buildItem(0.17, 0.05 ,     35  ,      POTENTIAL.x3),
+    "303": buildItem(0.05, 0    ,     16  ,      POTENTIAL.x3),
+    "304": buildItem(0.15, 0.05 ,     25  ,      POTENTIAL.barracuda),
+    // Tier 2
+    "201": buildItem(0.05, 0    ,     25  ,      POTENTIAL.odyssey),
+    "202": buildItem(0.02, 0    ,     20  ,      POTENTIAL.x3),
+    // Fly
+    "101": buildItem(0   , 0    ,     10  ,      [0,0]),
+}
+
 const calculatePlayerScore = (type, ecp) => {
-    const playerScore = {
-        currentScore: Number(String(type).split('')[0]) / 15,
-        potentialScore: 0.7,
-        energyOutput: 0
+    return {
+        currentScore: (Number(String(type).split('')[0]) / 15) + SHIP_TABLE[String(type)][ecp ? "ecp" : "nonecp"],
+        potentialScore: (7 / 15) + SHIP_TABLE[String(type)]["potential"][+!ecp], // +!ecp is: First ecp is converted into a boolean and then inverted using !, then turned into a number using +, resulting in index 0 for ecp=true
+        energyOutput: SHIP_TABLE[String(type)]["eregen"]
     }
-    if (ecp) {
-        playerScore.currentScore += 0.25
-        playerScore.potentialScore += 0.25
-    }
-    let energyOutput = 0;
-    switch (type) {
-        case 701:
-            if (ecp) {
-                playerScore.currentScore += 2.5
-                playerScore.potentialScore = playerScore.currentScore
-            } else {
-                playerScore.currentScore += 1.5
-                playerScore.potentialScore = playerScore.currentScore
-            }
-            energyOutput = 150;
-            break
-        case 702:
-            if (ecp) {
-                playerScore.currentScore += 1.7
-                playerScore.potentialScore = playerScore.currentScore
-            } else {
-                playerScore.currentScore += 1
-                playerScore.potentialScore = playerScore.currentScore
-            }
-            energyOutput = 50;
-            break
-        case 703:
-            if (ecp) {
-                playerScore.currentScore += 1.4
-                playerScore.potentialScore = playerScore.currentScore
-            } else {
-                playerScore.currentScore += 0.4
-                playerScore.potentialScore = playerScore.currentScore
-            }
-            energyOutput = 100;
-            break
-        case 704:
-            if (ecp) {
-                playerScore.currentScore += 1
-                playerScore.potentialScore = playerScore.currentScore
-            } else {
-                playerScore.currentScore += 0.3
-                playerScore.potentialScore = playerScore.currentScore
-            }
-            energyOutput = 175;
-            break
-        case 601:
-            if (ecp) {
-                playerScore.currentScore += 1.2
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.5
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 60;
-            break
-        case 602:
-            if (ecp) {
-                playerScore.currentScore += 1.2
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.45
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 50;
-            break
-        case 603:
-            if (ecp) {
-                playerScore.currentScore += 0.9
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.25
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 40;
-            break
-        case 604:
-            if (ecp) {
-                playerScore.currentScore += 0.5
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.25
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 48;
-            break
-        case 605:
-            if (ecp) {
-                playerScore.currentScore += 0.9
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.25
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 45;
-            break
-        case 606:
-            if (ecp) {
-                playerScore.currentScore += 0.9
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.2
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 45;
-            break
-        case 607:
-            if (ecp) {
-                playerScore.currentScore += 1.75
-                playerScore.potentialScore += 1.65
-            } else {
-                playerScore.currentScore += 0.3
-                playerScore.potentialScore += 0.2
-            }
-            energyOutput = 0;
-            break
-        case 608:
-            if (ecp) {
-                playerScore.currentScore += 0.5
-                playerScore.potentialScore += 1.4
-            } else {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 0.4
-            }
-            energyOutput = 40;
-            break
-        case 501:
-            if (ecp) {
-                playerScore.currentScore += 1.05
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.45
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 60;
-            break
-        case 502:
-            if (ecp) {
-                playerScore.currentScore += 0.75
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.3
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 40;
-            break
-        case 503:
-            if (ecp) {
-                playerScore.currentScore += 0.2
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 50;
-            break
-        case 504:
-            if (ecp) {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 45;
-            break
-        case 505:
-            if (ecp) {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 29;
-            break
-        case 506:
-            if (ecp) {
-                playerScore.currentScore += 0.9
-                playerScore.potentialScore += 1.75
-            } else {
-                playerScore.currentScore += 0.5
-                playerScore.potentialScore += 0.3
-            }
-            energyOutput = 50;
-            break
-        case 507:
-            if (ecp) {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 1.75
-            } else {
-                playerScore.currentScore += 0.1
-                playerScore.potentialScore += 0.3
-            }
-            energyOutput = 35;
-            break
-        case 401:
-            if (ecp) {
-                playerScore.currentScore += 0.3
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.05
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 35;
-            break
-        case 402:
-            if (ecp) {
-                playerScore.currentScore += 0.55
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.25
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 50;
-            break
-        case 403:
-            if (ecp) {
-                playerScore.currentScore += 0.4
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.2
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 55;
-            break
-        case 404:
-            if (ecp) {
-                playerScore.currentScore += 0.3
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.15
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 40;
-            break
-        case 405:
-            energyOutput = 30;
-            break
-        case 406:
-            energyOutput = 25;
-            break
-        case 301:
-            if (ecp) {
-                playerScore.currentScore += 0.2
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0.05
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 30;
-            break
-        case 302:
-            if (ecp) {
-                playerScore.currentScore += 0.15
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0.08
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 35;
-            break
-        case 303:
-            if (ecp) {
-                playerScore.currentScore += 0
-                playerScore.potentialScore += 1.7
-            } else {
-                playerScore.currentScore += 0
-                playerScore.potentialScore += 1
-            }
-            energyOutput = 16;
-            break
-        case 304:
-            if (ecp) {
-                playerScore.currentScore += 0.15
-                playerScore.potentialScore += 1.75
-            } else {
-                playerScore.currentScore += 0.05
-                playerScore.potentialScore += 0.3
-            }
-            energyOutput = 25;
-            break
-        case 201:
-            if (ecp) {
-                playerScore.currentScore += 0.05
-                playerScore.potentialScore += 2.5
-            } else {
-                playerScore.currentScore += 0
-                playerScore.potentialScore += 1.5
-            }
-            energyOutput = 25;
-            break
-        case 202:
-            if (ecp) {
-                playerScore.currentScore += 0.02
-                playerScore.potentialScore += 1.75
-            } else {
-                playerScore.currentScore += 0
-                playerScore.potentialScore += 0.3
-            }
-            energyOutput = 20;
-            break
-        default:
-            break
-    }
-    playerScore.energyOutput = energyOutput;
-    return playerScore
 }
 
 const SHIP_LINKS = [
@@ -995,24 +813,5 @@ const SHIP_LINKS = [
 ]
 
 
+//This runs the SL integration. Do not touch
 refreshSL();
-
-
-const SL_SETTINGS_REF = document.querySelector('#SL_SETTINGS_REF');
-const SL_LISTING_REF = document.querySelector('#SL_LISTING_REF');
-
-
-
-/*var element = document.getElementById("content");
-element.style.marginTop = "0px"
-
-var observer = new MutationObserver(function(mutationsList, observer) {
-    for (var mutation of mutationsList) {
-        if (mutation.type === "attributes" && mutation.attributeName === "style") {
-            if (element.style.marginTop !== "0px") {
-                element.style.marginTop = "0px";
-            }
-        }
-    }
-});
-observer.observe(element, { attributes: true });*/
