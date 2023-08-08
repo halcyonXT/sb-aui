@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
+// @version      1.2.3
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
 // @match        https://starblast.io/
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=starblast.io
+// @icon         https://i.ibb.co/1QgnHfK/aui.png
 // @grant        none
 // ==/UserScript==
 
@@ -16,12 +16,14 @@
  * 1.1.0 - Added team evaluation (PBS, PPBS, DPS)
  * 1.2.0 - Optimizations, code cleanup and transition to a component-based system
  * 1.2.1 - More optimizations and code cleanup. Added hardElementRefresh
+ * 1.2.2 - Tested component relationships (they work), added loading animations and some debugging
+ * 1.2.3 - GreasyFork is begging me to update the version number
  */
 
 'use strict';
 
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const CURRENT_RUNNING_VERSION = "1.2.1"
+const CURRENT_RUNNING_VERSION = "1.2.3"
 
 /********* STYLING ************ */
 
@@ -247,6 +249,7 @@ const templateStatusData = () => ({name: "",id: "",team_1: {hue: null,gems: 0,le
 
 //All variables used in the components should be declared here
 window["COMPONENT_STATE_VALUES"] = {
+    listingLoading: true,
     options: {
         activePanel: "listing",
         activeRegion: "europe",
@@ -260,6 +263,7 @@ window["COMPONENT_STATE_VALUES"] = {
     },
     filteredSystems: [],
     statusReportActive: false,
+    statusReportLoading: false,
     statusReportData: {
         name: "",
         id: "",
@@ -348,6 +352,7 @@ let API_TIMER = setInterval(async () => {
         return;
     }
     let raw = await(await fetch(API_LINK)).json();
+    COMPONENT_STATE_VALUES.listingLoading = false;
     let allSystems = [];
     for (let item of raw) {
         if (item.modding) {
@@ -375,28 +380,34 @@ let STATUS_TIMER = null;
 window.statusReport = async (query) => {
     if (STATUS_TIMER) {return};
     COMPONENT_STATE_VALUES.statusReportActive = true;
+    COMPONENT_STATE_VALUES.statusReportLoading = true;
     StatusReportModal.hardRefreshElement();
     STATUS_TIMER = setInterval(async () => {
         let raw = await (await fetch(`https://starblast.dankdmitron.dev/api/status/${query}`)).json();
+        if (COMPONENT_STATE_VALUES.statusReportLoading) {
+            COMPONENT_STATE_VALUES.statusReportLoading = false;
+        }
         COMPONENT_STATE_VALUES.statusReportData = templateStatusData();
         COMPONENT_STATE_VALUES.statusReportData.name = raw.name;
         COMPONENT_STATE_VALUES.statusReportData.id = query.split('@')[0];
-        for (let key of Object.keys(raw.players)) {
-            let player = raw.players[key];
-            COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].players.push({
-                name: player.player_name,
-                ecp: !!player.custom,
-                score: player.score,
-                type: player.type,
-                PBS: calculatePlayerScore(player.type, !!player.custom)
-            })
-            COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].hue = player.hue;
-        }
+        try {
+            for (let key of Object.keys(raw.players)) {
+                let player = raw.players[key];
+                COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].players.push({
+                    name: player.player_name,
+                    ecp: !!player.custom,
+                    score: player.score,
+                    type: player.type,
+                    PBS: calculatePlayerScore(player.type, !!player.custom)
+                })
+                COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].hue = player.hue;
+            }
+        } catch (ex) {window.closeStatusReport()}
         for (let team of raw.mode.teams) {
             for (let num of ["team_1", "team_2", "team_3"]) {
                 if (team.hue === COMPONENT_STATE_VALUES.statusReportData[num].hue) {
-                    COMPONENT_STATE_VALUES.statusReportData[num].gems = team.crystals
-                    COMPONENT_STATE_VALUES.statusReportData[num].level = team.level
+                    COMPONENT_STATE_VALUES.statusReportData[num].gems = team.crystals;
+                    COMPONENT_STATE_VALUES.statusReportData[num].level = team.level;
                     break
                 }
             }
@@ -576,38 +587,52 @@ let Settings = new Component("SLSettings", () => `<div id="SL_SETTINGS" style="b
 let Listing = new Component("ServerListing", () => `
     <div id="SL_LISTING" style="box-sizing:border-box;padding:0.6vw;height:86%;width:100%;display: ${COMPONENT_STATE_VALUES.options.activePanel == "listing" ? "flex" : "none"}; flex-direction: column; overflow-y: auto;background-color:#0b0b0b;border:1px solid #1a1a1a">
         ${
-            COMPONENT_STATE_VALUES.filteredSystems.length === 0
+            COMPONENT_STATE_VALUES.listingLoading
             ?
-            ""
+            `${LoadingAnimation.getElement()}`
             :
-            COMPONENT_STATE_VALUES.filteredSystems.map(system => {
-                return  `
-                        <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
-                            <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
-                                ${system.name}
-                            </div>
-                            <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
-                            <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
-                                <div>
-                                    ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
-                                </div>   
-                                <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
-                                    ${~~(system.time / 60)} min
-                                </div> 
-                                <div>
-                                    ${system.players} players
+            `
+            ${
+                COMPONENT_STATE_VALUES.filteredSystems.length === 0
+                ?
+                ""
+                :
+                COMPONENT_STATE_VALUES.filteredSystems.map(system => {
+                    return  `
+                            <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
+                                <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
+                                    ${system.name}
+                                </div>
+                                <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
+                                <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
+                                    <div>
+                                        ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
+                                    </div>   
+                                    <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
+                                        ${~~(system.time / 60)} min
+                                    </div> 
+                                    <div>
+                                        ${system.players} players
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    `
-                
-            }).join('')
+                        `
+                    
+                }).join('')
+            }
+            `
         }
 </div>`)
 
 let StatusReportModal = new Component("StatusReportModal", () => `
 <div style="position:fixed; top:0; left:0; width: 100%; height: 100%; display: ${COMPONENT_STATE_VALUES.statusReportActive ? "grid" : "none"}; place-items:center; z-index: 999; background: rgba(0,0,0,0.4)">
-        <div style="padding:1vw;display:flex;flex-direction:column;align-items:center;background:#0b0b0b;border:1px solid #1a1a1a;border-radius:12px">
+    <div style="padding:1vw;display:flex;flex-direction:column;align-items:center;background:#0b0b0b;border:1px solid #1a1a1a;border-radius:12px;${COMPONENT_STATE_VALUES.statusReportLoading ? "justify-content:center" : ""}">
+        ${
+            COMPONENT_STATE_VALUES.statusReportLoading
+            ?
+            `${LoadingAnimation.getElement()}`
+            :
+            `
             <div style="height:3vh; border-bottom: 1px solid #1a1a1a; width:50vw; color: white; font-family: 'DM Sans',sans-serif; font-size: 1.7vw; display: flex; justify-content: space-between; fill: white; align-items: center; padding-bottom: 2vh">
                 <div>${COMPONENT_STATE_VALUES.statusReportData.name}</div>
                 <div style="display:flex;gap:1vw;align-items:center;">
@@ -685,8 +710,77 @@ let StatusReportModal = new Component("StatusReportModal", () => `
                     })()
                 }
             </div>
-        </div>
+            `
+        }    
+            
+    </div>
 </div>`)
+
+let LoadingAnimation = new Component("LoadingAnimation", () => `<svg style="height:4.8vh; aspect-ratio: 1 / 1" viewBox="0 0 100 100">
+<g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="6">
+    <!-- left line -->
+    <path d="M 21 40 V 59">
+        <animateTransform
+  attributeName="transform"
+  attributeType="XML"
+  type="rotate"
+  values="0 21 59; 180 21 59"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <!-- right line -->
+    <path d="M 79 40 V 59">
+        <animateTransform
+  attributeName="transform"
+  attributeType="XML"
+  type="rotate"
+  values="0 79 59; -180 79 59"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <!-- top line -->
+    <path d="M 50 21 V 40">
+        <animate
+  attributeName="d"
+  values="M 50 21 V 40; M 50 59 V 40"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <!-- btm line -->
+    <path d="M 50 60 V 79">
+        <animate
+  attributeName="d"
+  values="M 50 60 V 79; M 50 98 V 79"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <!-- top box -->
+    <path d="M 50 21 L 79 40 L 50 60 L 21 40 Z">
+    <animate
+  attributeName="stroke"
+  values="rgba(255,255,255,1); rgba(100,100,100,0)"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <!-- mid box -->
+    <path d="M 50 40 L 79 59 L 50 79 L 21 59 Z"/>
+    <!-- btm box -->
+    <path d="M 50 59 L 79 78 L 50 98 L 21 78 Z">
+    <animate
+  attributeName="stroke"
+  values="rgba(100,100,100,0); rgba(255,255,255,1)"
+  dur="2s"
+  repeatCount="indefinite" />
+    </path>
+    <animateTransform
+  attributeName="transform"
+  attributeType="XML"
+  type="translate"
+  values="0 0; 0 -19"
+  dur="2s"
+  repeatCount="indefinite" />
+</g>
+</svg>`)
 
 
 
