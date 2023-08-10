@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
+// @version      1.3.1
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
@@ -21,12 +21,14 @@
  * 1.2.3 - GreasyFork is begging me to update the version number
  * 1.2.4 - (Mateo) - Added user search
  * 1.2.5 - XSS prevention (username sanitization) and user search results update
+ * 1.3.0 - Added prop components - Useful for building elements from a template. Uses custom syntax - ||variable||. Lists transition to prop components still WIP
+ * 1.3.1 - Fixed bug regarding number 0 in prop components
  */
 
 'use strict';
 
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const CURRENT_RUNNING_VERSION = "1.2.5"
+const CURRENT_RUNNING_VERSION = "1.3.1"
 
 /********* STYLING ************ */
 
@@ -119,6 +121,9 @@ var css = `
 ::-webkit-scrollbar-track {
     background-color: transparent;
     border: none;
+}
+.noglow-placeholder::placeholder {
+    text-shadow: black 0px 0px 0px;
 }
 /* Firefox */
 scrollbar-width: thin;
@@ -274,6 +279,7 @@ window["COMPONENT_STATE_VALUES"] = {
     filteredSystems: [],
     statusReportActive: false,
     statusReportLoading: false,
+    isUpdateAvailable: false,
     statusReportData: {
         name: "",
         id: "",
@@ -307,7 +313,6 @@ window["COMPONENT_STATE_VALUES"] = {
     }
 }
 
-
 //Component class for easier maintaining. NOTE: All components must have only 1 parent element and components should be named using PascalCase 
 class Component {
     /**
@@ -325,7 +330,28 @@ class Component {
             return this.HTML();
         } else {throw new Error(`Component class error: Second argument in Component instantiation is not a function ('${typeof this.HTML}'). ${typeof this.HTML === 'string' && "Hint: Put '() =>' before your template literal"}`)}
     }
+
+    /**
+     * Evaluates element with props object. The ID is not included in build elements and they cannot be refreshed
+     * @param {Object} props - Props object is used to "build" elements. Its useful for displaying sets of data. A prop from the props object should be used inside the string between |||| tags like so: ||propName||
+     * @returns {innerHTML}
+     */
+    buildElement(props = {}) {
+        let processedHTML = this.evaluate();
+        processedHTML = processedHTML.replace(/\|\|([^|]+)\|\|/g, (match, variableName) => {
+            if (!props.hasOwnProperty(variableName)) {
+                console.error(`Component class error: ${variableName} not defined in props object`);
+                return match
+            }
+            return props[variableName] ?? match;
+        });
+        return processedHTML
+    }
     
+    /**
+     * Evaluates the HTML 
+     * @returns {innerHTML}
+     */
     getElement() {
         const tempContainer = document.createElement("span");
         tempContainer.innerHTML = this.evaluate();
@@ -337,6 +363,9 @@ class Component {
         return tempContainer.innerHTML;
     }
 
+    /**
+     * Re-evaluated the HTML excluding the parent element
+     */
     refreshElement() {
         //console.log(`Component refreshed: ${this.ID}`)
         try {
@@ -346,6 +375,9 @@ class Component {
         } catch (ex) {console.error(`Couldn't refresh element with the ID of '${this.ID}': ` + ex)}
     }
 
+    /**
+     * Re-evaluates the HTML including the parent element
+     */
     hardRefreshElement() {
         try {
             let tempElement = document.createElement("span");
@@ -549,7 +581,7 @@ let ListingOrSettings = new Component("SL_OPTIONS_WRAPPER", () => `<div id="SL_O
 
 let TitleAndCredits = new Component("TitleAndCredits", () => `<div style="height:10%;width:100%;">
     <div style="font-family: 'DM Sans', sans-serif;font-weight: 600;font-size: 1.3vw;text-align:right;width:100%;color:white">
-        Starblast AUI v${CURRENT_RUNNING_VERSION}
+        ${COMPONENT_STATE_VALUES.isUpdateAvailable ? `<a style="text-decoration:none;background-color:#Ff3931;font-weight:700;color:#0b0b0b">Update available</a>` : ""} Starblast AUI v${CURRENT_RUNNING_VERSION}
     </div>
     <div style="font-family:'Abel', sans-serif; font-weight: 300; font-size: 0.9vw; text-align: right; width: 100%; color: gray;">
         API (<a style="color:rgb(191,191,191)" href="https://starblast.dankdmitron.dev/" target="_blank"><u>Serverlist+</u></a>): <span style="color: white; font-weight: bold">dankdmitron</span>
@@ -666,7 +698,7 @@ let Listing = new Component("ServerListing", () => `
                 ""
                 :
                 `
-                <input id="user-search" autofocus value="${COMPONENT_STATE_VALUES.userSearch.input}" oninput="window.handleSearch()" placeholder="Search user in queried servers" style="width:100%; height:2.5vh; padding:0.3vh 0 0.3vh 0; font-family: 'Abel', sans-serif; color: white; border: 1px solid #1a1a1a; outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 1vh; text-indent: 0.5vw"></input>
+                <input id="user-search" autofocus value="${COMPONENT_STATE_VALUES.userSearch.input}" oninput="window.handleSearch()" class="noglow-placeholder" placeholder="Search user in queried servers" style="width:100%; height:2.5vh; padding:0.3vh 0 0.3vh 0; font-family: 'Abel', sans-serif; color: white; border: 1px solid #1a1a1a; outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 1vh; text-indent: 0.5vw"></input>
                 ${
                     COMPONENT_STATE_VALUES.userSearch.input
                     ?
@@ -694,20 +726,13 @@ let Listing = new Component("ServerListing", () => `
                                 :
                                 `
                                 ${
-                                    COMPONENT_STATE_VALUES.userSearch.results.map((item, index) => {
-                                        return (
-                                            `
-                                            <div style="display:flex;height:2vh;font-weight:600;background: ${index+1 % 2 === 0 ? "transparent" : "rgb(0,0,0,0.15)"} ;padding:0.1vh 0 0.1vh 0; font-family: 'Abel', sans-serif; color: white;outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 0.7vh;">
-                                                <div style="width:33.3%;max-width:33.3%;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
-                                                <div style="width:33.3%;color: ${getColorFromValue(Number(item.similarity))}">${item.similarity}%</div>
-                                                <div style="width:33.3%;display:flex;justify-content:center">
-                                                    <svg onclick="window.statusReport('${item.query}')" xmlns="http://www.w3.org/2000/svg" style="height:100%;aspect-ratio: 1 / 1; fill: white; cursor: pointer;" viewBox="0 -960 960 960"><path d="M440-220q125 0 212.5-87.5T740-520q0-125-87.5-212.5T440-820q-125 0-212.5 87.5T140-520q0 125 87.5 212.5T440-220Zm0-300Zm0 160q-83 0-147.5-44.5T200-520q28-70 92.5-115T440-680q82 0 146.5 45T680-520q-29 71-93.5 115.5T440-360Zm0-60q55 0 101-26.5t72-73.5q-26-46-72-73t-101-27q-56 0-102 27t-72 73q26 47 72 73.5T440-420Zm0-50q20 0 35-14.5t15-35.5q0-20-15-35t-35-15q-21 0-35.5 15T390-520q0 21 14.5 35.5T440-470Zm0 310q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T80-520q0-74 28.5-139.5t77-114.5q48.5-49 114-77.5T440-880q74 0 139.5 28.5T694-774q49 49 77.5 114.5T800-520q0 67-22.5 126T715-287l164 165-42 42-165-165q-48 40-107 62.5T440-160Z"/></svg>
-                                                </div>
-                                            </div>
-    
-                                            `
-                                        )
-                                    }).join('')
+                                    COMPONENT_STATE_VALUES.userSearch.results.map((item, index) => PlayerQueryDisplay.buildElement({
+                                            username: sanitizeUsername(item.name),
+                                            similarity: item.similarity,
+                                            query: item.query,
+                                            similarityColor: getColorFromValue(Number(item.similarity))
+                                        })
+                                    ).join('')
                                 }
                                 <div style="width:100%;display:flex;flex-direction:column;font-family: 'Abel',sans-serif;color:#444444;text-shadow: black 0px 0px 0px;margin-top:1vh">
                                     <div style="font-size:1.9vh;text-align:center">${COMPONENT_STATE_VALUES.userSearch.results.length} results<br>${COMPONENT_STATE_VALUES.userSearch.systemsQueried} / ${COMPONENT_STATE_VALUES.filteredSystems.length} systems queried</div>
@@ -720,28 +745,14 @@ let Listing = new Component("ServerListing", () => `
                     :
                     `
                     ${
-                        COMPONENT_STATE_VALUES.filteredSystems.map(system => {
-                            return  `
-                                    <div onclick="window.statusReport('${system.id}@${system.IP_ADDR}')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
-                                        <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
-                                            ${system.name}
-                                        </div>
-                                        <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
-                                        <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
-                                            <div>
-                                                ${system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode)}
-                                            </div>   
-                                            <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
-                                                ${~~(system.time / 60)} min
-                                            </div> 
-                                            <div>
-                                                ${system.players} players
-                                            </div>
-                                        </div>
-                                    </div>
-                                `
-                            
-                        }).join('')
+                        COMPONENT_STATE_VALUES.filteredSystems.map(system => SystemDisplay.buildElement({
+                            id: system.id,
+                            ip: system.IP_ADDR,
+                            name: system.name,
+                            mode: system.mode === 'modding' ? capitalize(system.mod_id) : capitalize(system.mode),
+                            time: ~~(system.time / 60),
+                            players: system.players
+                        })).join('')
                     }
                     `
                 }
@@ -749,6 +760,35 @@ let Listing = new Component("ServerListing", () => `
             }
             `
         }
+</div>`)
+
+let SystemDisplay = new Component('SystemDisplay', () => `
+<div onclick="window.statusReport('||id||@||ip||')" style="width:100%; cursor: pointer; min-height:8.5vh; margin-bottom: 0.9vh; border-radius:12px; border: 1px solid #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly;box-sizing:border-box;padding:0.4vh">
+    <div style="font-family:'DM Sans',sans-serif;color:white;font-weight:600;font-size:1.4vw;">
+        ||name||
+    </div>
+    <div style="width:82%;height:1px;background-color:#1a1a1a"></div>
+    <div style="width:92%;display:flex;align-items:center;justify-content:space-between;color:gray;font-family:'Abel',sans-serif;font-size:0.8vw;position:relative;">
+        <div>
+            ||mode||
+        </div>
+        <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
+            ||time|| min
+        </div> 
+        <div>
+            ||players|| players
+        </div>
+    </div>
+</div>
+`)
+
+let PlayerQueryDisplay = new Component("PQD", () => `
+<div style="display:flex;height:2vh;font-weight:600;padding:0.1vh 0 0.1vh 0; font-family: 'Abel', sans-serif; color: white;outline: 0; background: #0b0b0b; text-shadow: black 0px 0px 0px; border-radius: 5px; font-size: 1.6vh;  margin-bottom: 0.7vh;">
+    <div style="width:33.3%;max-width:33.3%;text-overflow:ellipsis;white-space:nowrap">||username||</div>
+    <div style="width:33.3%;color: ||similarityColor||">||similarity||%</div>
+    <div style="width:33.3%;display:flex;justify-content:center">
+        <svg onclick="window.statusReport('||query||')" xmlns="http://www.w3.org/2000/svg" style="height:100%;aspect-ratio: 1 / 1; fill: white; cursor: pointer;" viewBox="0 -960 960 960"><path d="M440-220q125 0 212.5-87.5T740-520q0-125-87.5-212.5T440-820q-125 0-212.5 87.5T140-520q0 125 87.5 212.5T440-220Zm0-300Zm0 160q-83 0-147.5-44.5T200-520q28-70 92.5-115T440-680q82 0 146.5 45T680-520q-29 71-93.5 115.5T440-360Zm0-60q55 0 101-26.5t72-73.5q-26-46-72-73t-101-27q-56 0-102 27t-72 73q26 47 72 73.5T440-420Zm0-50q20 0 35-14.5t15-35.5q0-20-15-35t-35-15q-21 0-35.5 15T390-520q0 21 14.5 35.5T440-470Zm0 310q-75 0-140.5-28.5t-114-77q-48.5-48.5-77-114T80-520q0-74 28.5-139.5t77-114.5q48.5-49 114-77.5T440-880q74 0 139.5 28.5T694-774q49 49 77.5 114.5T800-520q0 67-22.5 126T715-287l164 165-42 42-165-165q-48 40-107 62.5T440-160Z"/></svg>
+    </div>
 </div>`)
 
 let StatusReportModal = new Component("StatusReportModal", () => `
@@ -1095,3 +1135,32 @@ const SHIP_LINKS = [
 
 //This runs the SL integration. Do not touch
 refreshSL();
+
+
+
+// CODE BELOW IS A DISABLED UPDATE CHECKER RESERVED FOR FUTURE USE
+/*;(async () => {
+    //Update checker
+    console.log("CHECKING FOR UPDATES")
+    GM.xmlHttpRequest({
+        method: "GET",
+        url: "https://greasyfork.org/vite/assets/application-043a6a93.js",
+        responseType: "text", // Specify that the response is expected to be text (HTML)
+        onload: function(response) {
+            // response.responseText contains the fetched HTML content
+            console.log(response.responseText);
+        },
+        onerror: function(error) {
+            console.error(error);
+        }
+    });
+    let temp = document.createElement('span');
+    let raw = await (await (GM.xmlHttpRequest('https://greasyfork.org/en/scripts/472581-sb-aui'))).text();
+    temp.innerHTML = raw;
+    let target = temp.querySelector('#script-stats > dd.script-show-version > span').textContent;
+    console.log(target)
+    if (target !== CURRENT_RUNNING_VERSION) {
+        COMPONENT_STATE_VALUES.isUpdateAvailable = true;
+        TitleAndCredits.refreshElement();
+    }
+})();*/
