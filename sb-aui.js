@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.3.1
+// @version      1.3.2
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
@@ -23,12 +23,13 @@
  * 1.2.5 - XSS prevention (username sanitization) and user search results update
  * 1.3.0 - Added prop components - Useful for building elements from a template. Uses custom syntax - ||variable||. Lists transition to prop components still WIP
  * 1.3.1 - Fixed bug regarding number 0 in prop components
+ * 1.3.2 - Fixed returnCaret bug
  */
 
 'use strict';
 
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const CURRENT_RUNNING_VERSION = "1.3.1"
+const CURRENT_RUNNING_VERSION = "1.3.2"
 
 /********* STYLING ************ */
 
@@ -418,8 +419,12 @@ let API_TIMER = setInterval(async () => {
         }
     }
     COMPONENT_STATE_VALUES.filteredSystems = allSystems.sort((a, b) => a.time - b.time);
-    Listing.refreshElement();
-    returnCaret();
+    if (isFocused(document.querySelector('#user-search'))) {
+        Listing.refreshElement();
+        returnCaret();
+    } else {
+        Listing.refreshElement();
+    }
 }, 3200)
 
 const returnCaret = () => {
@@ -428,6 +433,8 @@ const returnCaret = () => {
     document.querySelector('#user-search').value = "";
     document.querySelector('#user-search').value = COMPONENT_STATE_VALUES.userSearch.input
 }
+
+const isFocused = (element) => document.activeElement === element;
 
 let STATUS_TIMER = null;
 window.statusReport = async (query) => {
