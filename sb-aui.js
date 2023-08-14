@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SB-AUI
 // @namespace    http://tampermonkey.net/
-// @version      1.3.2
+// @version      1.3.3
 // @description  Advanced UI for Starblast with extra features
 // @author       Halcyon
 // @license      All rights reserved, this code may not be reproduced or used in any way without the express written consent of the author.
@@ -24,12 +24,13 @@
  * 1.3.0 - Added prop components - Useful for building elements from a template. Uses custom syntax - ||variable||. Lists transition to prop components still WIP
  * 1.3.1 - Fixed bug regarding number 0 in prop components
  * 1.3.2 - Fixed returnCaret bug
+ * 1.3.3 - Lousy fix of modded statusReport
  */
 
 'use strict';
 
 const API_LINK = "https://starblast.dankdmitron.dev/api/simstatus.json";
-const CURRENT_RUNNING_VERSION = "1.3.2"
+const CURRENT_RUNNING_VERSION = "1.3.3"
 
 /********* STYLING ************ */
 
@@ -284,6 +285,7 @@ window["COMPONENT_STATE_VALUES"] = {
     statusReportData: {
         name: "",
         id: "",
+        mode: "",
         team_1: {
             hue: null,
             gems: 0,
@@ -314,11 +316,11 @@ window["COMPONENT_STATE_VALUES"] = {
     }
 }
 
-//Component class for easier maintaining. NOTE: All components must have only 1 parent element and components should be named using PascalCase 
+//Component class for easier maintaining. NOTE: All components must have only 1 parent element and components should be named using PascalCase
 class Component {
     /**
      * AUI HTML component. Make sure there is a wrapping parent element.
-     * @param {String} ID - ID of the element 
+     * @param {String} ID - ID of the element
      * @param {Function} HTML - Function that returns a template string representing innerHTML. Note that any conditions put on the wrapper element itself will never reflect upon using .refreshElement(), to reflect those changes use .hardRefreshElement()
      */
     constructor(ID, HTML) {
@@ -348,9 +350,9 @@ class Component {
         });
         return processedHTML
     }
-    
+
     /**
-     * Evaluates the HTML 
+     * Evaluates the HTML
      * @returns {innerHTML}
      */
     getElement() {
@@ -360,7 +362,7 @@ class Component {
         if (tempContainer.children.length > 1) {
             throw new Error(`Component class error: Components must have a parent element (Component ID: ${this.ID})`)
         }
-    
+
         return tempContainer.innerHTML;
     }
 
@@ -404,7 +406,7 @@ let API_TIMER = setInterval(async () => {
         if (item.modding) {
             if (!COMPONENT_STATE_VALUES.options.modes.modding) {
                 continue;
-            } 
+            }
         }
         if (item.location.toLowerCase() !== COMPONENT_STATE_VALUES.options.activeRegion) {
             continue;
@@ -450,7 +452,7 @@ window.statusReport = async (query) => {
         COMPONENT_STATE_VALUES.statusReportData = templateStatusData();
         COMPONENT_STATE_VALUES.statusReportData.name = raw.name;
         COMPONENT_STATE_VALUES.statusReportData.id = query.split('@')[0];
-        try {
+        COMPONENT_STATE_VALUES.statusReportData.mode = raw.mode.id;
             for (let key of Object.keys(raw.players)) {
                 let player = raw.players[key];
                 COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].players.push({
@@ -462,16 +464,17 @@ window.statusReport = async (query) => {
                 })
                 COMPONENT_STATE_VALUES.statusReportData[`team_${player.friendly + 1}`].hue = player.hue;
             }
-        } catch (ex) {window.closeStatusReport()}
-        for (let team of raw.mode.teams) {
-            for (let num of ["team_1", "team_2", "team_3"]) {
-                if (team.hue === COMPONENT_STATE_VALUES.statusReportData[num].hue) {
-                    COMPONENT_STATE_VALUES.statusReportData[num].gems = team.crystals;
-                    COMPONENT_STATE_VALUES.statusReportData[num].level = team.level;
-                    break
+        try {
+            for (let team of raw.mode.teams) {
+                for (let num of ["team_1", "team_2", "team_3"]) {
+                    if (team.hue === COMPONENT_STATE_VALUES.statusReportData[num].hue) {
+                        COMPONENT_STATE_VALUES.statusReportData[num].gems = team.crystals;
+                        COMPONENT_STATE_VALUES.statusReportData[num].level = team.level;
+                        break
+                    }
                 }
             }
-        }
+        } catch (ex) {console.log(ex)}
         for (let team of ["team_1", "team_2", "team_3"]) {
             let sPBS = 0, sPPBS = 0, potentialOutput = 0;
             for (let i = 0; i < COMPONENT_STATE_VALUES.statusReportData[team].players.length; i++) {
@@ -781,7 +784,7 @@ let SystemDisplay = new Component('SystemDisplay', () => `
         </div>
         <div style="position:absolute;top:0;left:0;width:100%;text-align:center;">
             ||time|| min
-        </div> 
+        </div>
         <div>
             ||players|| players
         </div>
@@ -825,7 +828,7 @@ let StatusReportModal = new Component("StatusReportModal", () => `
                         for (let CUR_TEAM of ["team_1", "team_2", "team_3"]) {
                             arr.push(`
                             <div style="width:30%;height:100%;overflow-y: auto; display: flex; flex-direction: column; justify-content: flex-start; align-items: center">
-                                <div style="margin-bottom: 1vh;border-radius: 0.25vw;font-size:1.9vw;border:1px solid hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); background-color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 0.25); color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); width:80%;padding: 1vh 0 1vh 0; font-family: 'DM Sans',sans-serif; font-weight: 600; text-align: center;">
+                                <div style="margin-bottom: 1vh;border-radius: 0.25vw;font-size:1.9vw;border:1px solid hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); box-shadow: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1) 0px 0px 0.8vh; text-shadow: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1) 0px 0px 0.7vh; background-color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 0.25); color: hsla(${COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue}, 100%, 50%, 1); width:80%;padding: 1vh 0 1vh 0; font-family: 'DM Sans',sans-serif; font-weight: 600; text-align: center;">
                                     ${hueToColorName(COMPONENT_STATE_VALUES.statusReportData[CUR_TEAM].hue)}
                                 </div>
                                 <div style="width:100%;margin: 1vh 0 1vh 0; padding-bottom:1vh;border-bottom: 1px solid #1a1a1a;">
@@ -871,7 +874,7 @@ let StatusReportModal = new Component("StatusReportModal", () => `
                                                 </div>
                                                 <div style="width:90%;height:100%;display:flex;justify-content:space-between;font-family:'Abel',sans-serif;font-size:0.8vw;color:white;">
                                                     <div>${sanitizeUsername(player.name)}</div>
-                                                    <div style="display:flex">${player.score}&nbsp;<img style="height:0.8vw;aspect-ratio: 1 / 1;object-fit:contain;" src="${SHIP_LINKS.find(url => url.endsWith(`/${player.type}.png`))}"/></div>
+                                                    <div style="display:flex">${player.score ? player.score : "•"}&nbsp;<img style="height:0.8vw;aspect-ratio: 1 / 1;object-fit:contain;" src="${SHIP_LINKS.find(url => url.endsWith(`/${player.type}.png`))}"/></div>
                                                 </div>
                                             </div>
                                         `
@@ -885,8 +888,8 @@ let StatusReportModal = new Component("StatusReportModal", () => `
                 }
             </div>
             `
-        }    
-            
+        }
+
     </div>
 </div>`)
 
@@ -986,7 +989,7 @@ const POTENTIAL = {
     aries:     [1  ,   0.3],
     barracuda: [1.75,  0.3],
 }
-const buildItem = (ecp, nonecp, eregen, potential) => ({ecp, nonecp, eregen, potential});
+const buildItem = (ecp = 0, nonecp = 0, eregen = 0, potential = 0) => ({ecp, nonecp, eregen, potential});
 const SHIP_TABLE = {
     // The numbers on this table need massive improvement
     /**
@@ -1038,6 +1041,11 @@ const SHIP_TABLE = {
 }
 
 const calculatePlayerScore = (type, ecp) => {
+    if (COMPONENT_STATE_VALUES.statusReportData.mode !== "team") {
+        return {
+            currentScore: 0, potentialScore: 0, energyOutput: 0
+        }
+    }
     return {
         currentScore: (Number(String(type).split('')[0]) / 15) + SHIP_TABLE[String(type)][ecp ? "ecp" : "nonecp"],
         potentialScore: (7 / 15) + SHIP_TABLE[String(type)]["potential"][+!ecp], // +!ecp is: First ecp is converted into a boolean and then inverted using !, then turned into a number using +, resulting in index 0 for ecp=true
@@ -1085,7 +1093,7 @@ const sanitizeUsername = (username) => {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#x27;")
         .replace(/\//g, "&#x2F;");
-    
+
     return sanitizedUsername;
 }
 
