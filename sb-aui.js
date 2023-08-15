@@ -343,7 +343,7 @@ class Component {
         let processedHTML = this.evaluate();
         processedHTML = processedHTML.replace(/\|\|([^|]+)\|\|/g, (match, variableName) => {
             if (!props.hasOwnProperty(variableName)) {
-                console.error(`Component class error: ${variableName} not defined in props object`);
+                console.error(`Component class error: ${variableName} not defined in props object (Component ID: ${this.ID})`);
                 return match
             }
             return props[variableName] ?? match;
